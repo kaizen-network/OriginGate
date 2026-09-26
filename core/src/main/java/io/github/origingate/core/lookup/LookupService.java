@@ -77,14 +77,16 @@ public final class LookupService {
         try {
             executor.execute(() -> {
                 Result result = null;
+                Throwable failure = null;
                 try {
                     result = load(ip, refresh);
-                    created.complete(result);
                 } catch (Throwable ex) {
-                    created.completeExceptionally(ex);
-                } finally {
-                    inFlight.remove(key, created);
+                    failure = ex;
                 }
+                // Removed before completing, so a lookup that starts after this one finished never joins it.
+                inFlight.remove(key, created);
+                if (failure == null) created.complete(result);
+                else created.completeExceptionally(failure);
                 // Saved after the waiting login already has its answer.
                 if (result != null && result.source() == Source.PROVIDER) save(result.info());
             });
