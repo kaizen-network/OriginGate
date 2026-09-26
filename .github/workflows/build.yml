@@ -1,0 +1,65 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle.kts
+            **/gradle.lockfile
+            gradle/verification-metadata.xml
+            gradle/wrapper/gradle-wrapper.properties
+
+      - name: Check the probe script compiles
+        run: python3 -m py_compile tools/run_velocity_probe.py
+
+      - name: Build and test
+        run: bash ./gradlew --no-daemon build :platform-velocity:probeJar
+
+      - name: Save plugin JAR
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: OriginGate-${{ github.sha }}
+          path: platform-velocity/build/libs/OriginGate-Velocity-*.jar
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Save test and build reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-reports-${{ github.sha }}
+          path: |
+            */build/test-results/*/TEST-*.xml
+            */build/reports/tests/
+            build/reports/dependency-verification/
+          if-no-files-found: ignore
+          retention-days: 7

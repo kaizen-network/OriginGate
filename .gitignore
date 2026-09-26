@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+/core/bin/
+/platform-velocity/bin/
+.idea/
+*.iml
+.run/
+.env
+*.db
+*.db-*
+*.log
+__pycache__/

@@ -1,0 +1,102 @@
+# OriginGate settings. Run "origingate reload" after editing.
+# Updates keep this file. New settings are not added automatically.
+
+# Format version of this file. Leave unchanged.
+config-version: 1
+
+# Run every check and log the result, but never kick anyone.
+# Useful for the first days, to see who would be kicked.
+dry-run: false
+
+# What the console shows for each login. Each level includes the ones before it.
+#   none:    nothing (startup, reload, and errors still show)
+#   kicks:   kicked players (and WOULD-DENY in dry-run)
+#   matches: every login where a rule matched or the lookup failed, including bypasses
+#   all:     every login, one line each
+#   debug:   every login, plus each step of the check
+console-log: matches
+
+lookup:
+  # Let in players from localhost or your LAN without a lookup.
+  skip-private-addresses: true
+  # What to do when the lookup fails or takes longer than wait-millis: allow or deny.
+  on-lookup-failure: allow
+  # Longest time a login waits for the lookup, in milliseconds (1000-20000).
+  wait-millis: 5000
+  proxycheck:
+    # proxycheck.io v3 API. Change only for testing.
+    base-url: "https://proxycheck.io/v3/"
+    # Your proxycheck.io API keys, used in turn. Leave empty to use proxycheck.io without a key (100 lookups per day).
+    # When a key is rejected or rate-limited, the next key is tried once.
+    api-keys: []
+    # Longest time for one API request, in milliseconds (500-20000).
+    request-timeout-millis: 3500
+
+storage:
+  # sqlite (local file) or mysql (also for MariaDB). Saved lookups are not copied when switching.
+  type: sqlite
+  # Lookups older than this many days (1-365) are looked up again and deleted from storage.
+  max-age-days: 30
+  # Most recent lookups kept in memory (100-1000000).
+  memory-cache-size: 10000
+  sqlite:
+    # Database file, inside the plugin folder.
+    file: data/origingate.db
+  # Used only when type is mysql. The table is created automatically.
+  mysql:
+    host: localhost
+    port: 3306
+    database: origingate
+    username: origingate
+    # Literal password. Environment-variable references are not expanded.
+    password: ""
+    # verify-full checks the certificate and host name. Use disable only on a protected network.
+    ssl-mode: verify-full
+    # Timeouts in milliseconds (100-30000).
+    connect-timeout-millis: 3000
+    socket-timeout-millis: 5000
+
+# Anyone matching here skips every check below.
+bypass:
+  # Any of these permissions.
+  permissions: []
+  # Player names or UUIDs, for example ["ExamplePlayer"].
+  players: []
+  # IP addresses or CIDR ranges, for example 203.0.113.0/24.
+  addresses: []
+
+# Checked in this order. The first rule that matches decides.
+# A player with any of a rule's bypass-permissions is let in instead of kicked by that rule.
+rules:
+  # Kicks the IP addresses or ranges you list, without a lookup.
+  deny-addresses:
+    enabled: false
+    # IP addresses or CIDR ranges, for example ["203.0.113.0/24"].
+    list: []
+    bypass-permissions: []
+  # Kicks IPs that proxycheck.io flags as a VPN.
+  vpn:
+    enabled: true
+    bypass-permissions: ["origingate.bypass.vpn"]
+  # Kicks IPs that proxycheck.io flags as a proxy.
+  proxy:
+    enabled: true
+    # Proxies from these countries are allowed. Two-letter codes, for example [US, GB].
+    allowed-countries: []
+    bypass-permissions: ["origingate.bypass.proxy"]
+  # Kicks players by country.
+  country:
+    enabled: false
+    # allowlist: only these countries get in. denylist: these countries are kicked.
+    mode: allowlist
+    # Two-letter country codes, for example [US, CA].
+    countries: []
+    bypass-permissions: ["origingate.bypass.country"]
+
+alerts:
+  # Online staff with any of these permissions see kicks and bypasses in chat.
+  permissions: ["origingate.alerts"]
+
+# Write every login where a rule matched or the lookup failed to daily files in the logs folder.
+# Files older than max-age-days are deleted.
+log-file: true
