@@ -17,7 +17,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Finds IP data in this order: memory, storage, provider. Only one lookup per IP
+ * Finds IP data in this order: memory, storage, providers. Only one lookup per IP
  * runs at a time; other callers share its result. Storage errors are logged and skipped, never fatal,
  * and after one, storage is left alone for {@link #STORAGE_PAUSE} so a dead database does not slow logins.
  */
@@ -28,9 +28,12 @@ public final class LookupService {
 
     public enum Source { MEMORY, STORAGE, PROVIDER }
 
-    public record Result(IpInfo info, Source source) { }
+    /** {@code answeredBy} names the providers for a fresh lookup, and is null for memory and storage. */
+    public record Result(IpInfo info, Source source, AnsweredBy answeredBy) {
+        public Result(IpInfo info, Source source) { this(info, source, null); }
+    }
 
-    private final LookupProvider provider;
+    private final ProviderChain providers;
     private final IpStorage storage;
     private final MemoryCache cache;
     private final Duration maxAge;
@@ -46,9 +49,9 @@ public final class LookupService {
     };
     private volatile Instant storagePausedUntil = Instant.MIN;
 
-    public LookupService(LookupProvider provider, IpStorage storage, MemoryCache cache, Duration maxAge,
+    public LookupService(ProviderChain providers, IpStorage storage, MemoryCache cache, Duration maxAge,
                          Executor executor, Clock clock, Log log) {
-        this.provider = provider;
+        this.providers = providers;
         this.storage = storage;
         this.cache = cache;
         this.maxAge = maxAge;
@@ -101,28 +104,30 @@ public final class LookupService {
         Instant now = clock.instant();
         if (!refresh) {
             Optional<IpInfo> stored = read(ip, now.minus(maxAge));
-            if (stored.isPresent()) return remember(stored.get(), Source.STORAGE);
+            if (stored.isPresent()) return remember(stored.get(), Source.STORAGE, null);
             Instant retryAt;
             synchronized (noCountry) {
                 retryAt = noCountry.get(ip);
             }
             if (retryAt != null && now.isBefore(retryAt)) {
-                throw new LookupException("The provider had no country for " + ip + " a moment ago; not asking again yet");
+                throw new LookupException("No provider had a country for " + ip + " a moment ago; not asking again yet");
             }
         }
-        log.debug("Asking the lookup provider about " + ip);
-        IpInfo info = provider.lookup(ip);
-        if (info.countryCode() == null) {
+        log.debug("Asking the lookup providers about " + ip);
+        ProviderChain.Answer answer;
+        try {
+            answer = providers.lookup(ip);
+        } catch (ProviderChain.NoCountryException ex) {
             // Country rules cannot work without a country code, so this counts as a failed lookup and is not saved.
             synchronized (noCountry) {
                 noCountry.put(ip, now.plus(NO_COUNTRY_PAUSE));
             }
-            throw new LookupException("The provider returned no country for " + ip);
+            throw ex;
         }
         synchronized (noCountry) {
             noCountry.remove(ip);
         }
-        return remember(info, Source.PROVIDER);
+        return remember(answer.info(), Source.PROVIDER, answer.answeredBy());
     }
 
     private Optional<IpInfo> read(String ip, Instant notBefore) {
@@ -154,10 +159,10 @@ public final class LookupService {
                 + STORAGE_PAUSE.toSeconds() + " seconds: " + Text.message(ex), null);
     }
 
-    private Result remember(IpInfo info, Source source) {
+    private Result remember(IpInfo info, Source source, AnsweredBy answeredBy) {
         cache.put(info);
         log.debug("Found " + info.ip() + " in " + source.name().toLowerCase(java.util.Locale.ROOT));
-        return new Result(info, source);
+        return new Result(info, source, answeredBy);
     }
 
     /** Forgets one IP in memory. Returns true when it was cached. */

@@ -2,6 +2,7 @@ package io.github.origingate.core.report;
 
 import io.github.origingate.core.Text;
 import io.github.origingate.core.lookup.IpInfo;
+import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.Decision;
 import io.github.origingate.core.rules.LoginAttempt;
@@ -28,7 +29,9 @@ public final class DecisionLine {
             quoted(line, "type", info.type());
             line.append(" vpn=").append(info.vpn() ? "yes" : "no");
             line.append(" proxy=").append(info.proxy() ? "yes" : "no");
-            line.append(" source=").append(decision.lookup().source().name().toLowerCase(Locale.ROOT));
+            LookupService.Result result = decision.lookup();
+            line.append(" source=").append(result.answeredBy() != null
+                    ? result.answeredBy().joined() : result.source().name().toLowerCase(Locale.ROOT));
         }
         if (decision.note() != null) quoted(line, "note", decision.note());
         return line.toString();

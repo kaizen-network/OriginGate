@@ -26,6 +26,7 @@ import static io.github.origingate.core.TestSupport.info;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -35,7 +36,7 @@ class LookupServiceTest {
     private final FakeProvider provider = new FakeProvider().answer(info(IP, "Canada", "CA", false, false));
     private final FakeStorage storage = new FakeStorage();
     private final ExecutorService workers = Executors.newFixedThreadPool(4);
-    private final LookupService service = new LookupService(provider, storage,
+    private final LookupService service = new LookupService(TestSupport.chain(provider), storage,
             new MemoryCache(100, Duration.ofDays(30), clock), Duration.ofDays(30), workers, clock, Log.NONE);
 
     @AfterEach void stop() {
@@ -50,6 +51,11 @@ class LookupServiceTest {
     private void awaitSaved(String ip) throws InterruptedException {
         for (int i = 0; i < 100 && !storage.rows.containsKey(ip); i++) Thread.sleep(20);
         assertTrue(storage.rows.containsKey(ip), "not saved");
+    }
+
+    @Test void freshResultNamesWhoAnswered() throws Exception {
+        assertEquals("fake (country, vpn)", get(false).answeredBy().described());
+        assertNull(get(false).answeredBy(), "memory results have no provider names");
     }
 
     @Test void providerResultIsSavedAndThenServedFromMemory() throws Exception {
@@ -163,7 +169,7 @@ class LookupServiceTest {
         provider.gate = new CountDownLatch(1);
         ThreadPoolExecutor tiny = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1));
         try {
-            LookupService small = new LookupService(provider, storage, new MemoryCache(100, Duration.ofDays(30), clock),
+            LookupService small = new LookupService(TestSupport.chain(provider), storage, new MemoryCache(100, Duration.ofDays(30), clock),
                     Duration.ofDays(30), tiny, clock, Log.NONE);
             provider.answer(info("192.0.2.11", "Canada", "CA", false, false));
             provider.answer(info("192.0.2.12", "Canada", "CA", false, false));

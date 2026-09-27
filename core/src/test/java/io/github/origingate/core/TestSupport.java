@@ -6,6 +6,7 @@ import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.lookup.LookupException;
 import io.github.origingate.core.lookup.LookupProvider;
+import io.github.origingate.core.lookup.ProviderChain;
 import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.LoginAttempt;
 import io.github.origingate.core.storage.IpStorage;
@@ -29,6 +30,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -83,6 +85,11 @@ public final class TestSupport {
                 Addresses.parse(ip).orElseThrow(), granted::contains);
     }
 
+    /** A chain that asks one provider for both jobs, like the default config. */
+    public static ProviderChain chain(LookupProvider provider) {
+        return new ProviderChain(List.of(provider), List.of(provider), Duration.ofSeconds(20), Clock.systemUTC(), Log.NONE);
+    }
+
     /** A clock that tests can move forward. */
     public static final class MutableClock extends Clock {
         private volatile Instant now;
@@ -98,11 +105,31 @@ public final class TestSupport {
         @Override public Instant instant() { return now; }
     }
 
+    /** Keeps warnings so tests can check them. */
+    public static final class RecordingLog implements Log {
+        public final List<String> warnings = new CopyOnWriteArrayList<>();
+
+        @Override public void info(String message) { }
+
+        @Override public void warn(String message, Throwable cause) { warnings.add(message); }
+
+        @Override public void debug(String message) { }
+    }
+
     /** Returns canned results per IP, counts calls, and can hold calls until released. */
     public static final class FakeProvider implements LookupProvider {
         public final Map<String, Object> results = new ConcurrentHashMap<>();
         public final AtomicInteger calls = new AtomicInteger();
+        public final String name;
         public volatile CountDownLatch gate;
+        /** Runs at the start of each lookup, for example to move a test clock. */
+        public volatile Runnable onLookup;
+
+        public FakeProvider() { this("fake"); }
+
+        public FakeProvider(String name) { this.name = name; }
+
+        @Override public String name() { return name; }
 
         public FakeProvider answer(IpInfo info) {
             results.put(info.ip(), info);
@@ -116,6 +143,8 @@ public final class TestSupport {
 
         @Override public IpInfo lookup(String ip) throws LookupException {
             calls.incrementAndGet();
+            Runnable hook = onLookup;
+            if (hook != null) hook.run();
             CountDownLatch waitFor = gate;
             if (waitFor != null) {
                 try {

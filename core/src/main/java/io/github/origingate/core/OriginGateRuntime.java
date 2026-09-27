@@ -6,6 +6,7 @@ import io.github.origingate.core.config.Messages;
 import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.lookup.MemoryCache;
+import io.github.origingate.core.lookup.ProviderChain;
 import io.github.origingate.core.lookup.ProxyCheckProvider;
 import io.github.origingate.core.report.DecisionFile;
 import io.github.origingate.core.rules.Gate;
@@ -20,6 +21,7 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -90,7 +92,9 @@ public final class OriginGateRuntime implements AutoCloseable {
         Duration maxAge = Duration.ofDays(settings.maxAgeDays());
         ProxyCheckProvider provider = new ProxyCheckProvider(http, config.lookup().baseUrl(), config.lookup().apiKeys(),
                 requestTimeout, clock, log, "OriginGate/" + VERSION);
-        LookupService lookups = new LookupService(provider, storage, new MemoryCache(settings.memoryCacheSize(), maxAge, clock),
+        ProviderChain chain = new ProviderChain(List.of(provider), List.of(provider),
+                Duration.ofMillis(config.lookup().waitMillis()), clock, log);
+        LookupService lookups = new LookupService(chain, storage, new MemoryCache(settings.memoryCacheSize(), maxAge, clock),
                 maxAge, workers, clock, log);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, workers, new Gate(config, lookups, log),

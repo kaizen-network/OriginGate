@@ -1,0 +1,56 @@
+package io.github.origingate.core.lookup;
+
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+
+/** Sends one GET request for a web provider. Network errors become {@link LookupException}s named after the provider. */
+final class HttpLookup {
+    static final int MAX_BODY_CHARS = 256 * 1024;
+
+    record Response(int status, String body) { }
+
+    private final HttpClient http;
+    private final Duration timeout;
+    private final String userAgent;
+    private final String label;
+
+    HttpLookup(HttpClient http, Duration timeout, String userAgent, String label) {
+        this.http = http;
+        this.timeout = timeout;
+        this.userAgent = userAgent;
+        this.label = label;
+    }
+
+    /** The URL as text, ending with a slash so an IP can be appended. */
+    static String withSlash(URI url) {
+        String text = url.toString();
+        return text.endsWith("/") ? text : text + "/";
+    }
+
+    Response get(URI uri, Map<String, String> headers) throws LookupException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
+                .timeout(timeout)
+                .header("Accept", "application/json")
+                .header("User-Agent", userAgent)
+                .GET();
+        headers.forEach(request::header);
+        try {
+            HttpResponse<String> response = http.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return new Response(response.statusCode(), response.body());
+        } catch (HttpTimeoutException ex) {
+            throw new LookupException(label + " did not answer within " + timeout.toMillis() + " ms", ex);
+        } catch (IOException ex) {
+            throw new LookupException(label + " request failed: " + ex.getMessage(), ex);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new LookupException(label + " request was interrupted", ex);
+        }
+    }
+}

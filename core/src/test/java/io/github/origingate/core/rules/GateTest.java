@@ -50,7 +50,7 @@ class GateTest {
     private Gate gate(Object... changes) throws Exception {
         OriginGateConfig config = TestSupport.config(directory, changes);
         Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
-        LookupService lookups = new LookupService(provider, new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
                 Duration.ofDays(30), workers, clock, Log.NONE);
         return new Gate(config, lookups, Log.NONE);
     }

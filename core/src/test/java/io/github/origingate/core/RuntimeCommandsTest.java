@@ -127,6 +127,7 @@ class RuntimeCommandsTest {
         assertTrue(sender.waitFor("Result").contains("allowed through a bypass by the country rule"));
         commands().execute(new String[] {"check", "8.8.8.8", "refresh"}, sender);
         sender.waitFor("Source: provider");
+        assertTrue(sender.waitFor("Answered by").contains("proxycheck (country, vpn)"));
         assertEquals(2, apiCalls.get());
     }
 

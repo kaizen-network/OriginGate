@@ -131,11 +131,11 @@ class ProxyCheckProviderTest {
     }
 
     @Test void deniedAndErrorStatusesFail() throws Exception {
-        assertThrows(ProxyCheckProvider.KeyRejectedException.class,
+        assertThrows(KeyRejectedException.class,
                 () -> ProxyCheckProvider.parse("8.8.8.8", read("denied.json"), TestSupport.NOW));
         LookupException error = assertThrows(LookupException.class,
                 () -> ProxyCheckProvider.parse("8.8.8.8", read("error.json"), TestSupport.NOW));
-        assertFalse(error instanceof ProxyCheckProvider.KeyRejectedException);
+        assertFalse(error instanceof KeyRejectedException);
         assertTrue(error.getMessage().contains("No valid IP addresses supplied."));
         assertThrows(LookupException.class, () -> ProxyCheckProvider.parse("8.8.8.8", "not json", TestSupport.NOW));
         assertThrows(LookupException.class, () -> ProxyCheckProvider.parse("9.9.9.9", read("business-8.8.8.8.json").replace("\"8.8.8.8\"", "\"x\"").replace("\"detections\"", "\"other\""), TestSupport.NOW));
@@ -173,7 +173,7 @@ class ProxyCheckProviderTest {
         keyStatus.put("key-one", 401);
         keyStatus.put("key-two", 403);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
-        assertThrows(ProxyCheckProvider.KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
         assertEquals(2, requests.size());
     }
 
@@ -181,7 +181,7 @@ class ProxyCheckProviderTest {
         keyStatus.put("key-one", 500);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
         LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
-        assertFalse(failure instanceof ProxyCheckProvider.KeyRejectedException);
+        assertFalse(failure instanceof KeyRejectedException);
         assertEquals(1, requests.size());
     }
 
@@ -190,5 +190,15 @@ class ProxyCheckProviderTest {
         ProxyCheckProvider provider = provider(List.of(), 500);
         LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
         assertTrue(failure.getMessage().contains("did not answer within 500 ms"), failure.getMessage());
+    }
+
+    @Test void nameIsProxycheck() throws Exception {
+        assertEquals("proxycheck", provider(List.of(), 3000).name());
+    }
+
+    @Test void arrayOrOversizedBodyIsRefused() {
+        assertThrows(LookupException.class, () -> ProxyCheckProvider.parse("8.8.8.8", "[]", TestSupport.NOW));
+        assertThrows(LookupException.class,
+                () -> ProxyCheckProvider.parse("8.8.8.8", "{\"a\":\"" + "x".repeat(300_000) + "\"}", TestSupport.NOW));
     }
 }

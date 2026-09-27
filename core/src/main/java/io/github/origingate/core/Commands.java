@@ -134,6 +134,7 @@ public final class Commands {
             sender.reply("OriginGate check for " + who + ":");
             sender.reply("  Source: " + result.source().name().toLowerCase(Locale.ROOT) + ", checked "
                     + TIME.format(info.checkedAt().atZone(ZoneId.systemDefault())));
+            if (result.answeredBy() != null) sender.reply("  Answered by: " + result.answeredBy().described());
             sender.reply("  Provider: " + Text.dash(info.provider()) + " | Organisation: " + Text.dash(info.organisation())
                     + " | Operator: " + Text.dash(info.operatorName()));
             sender.reply("  ASN: " + Text.dash(info.asn()) + " | Type: " + Text.dash(info.type()));

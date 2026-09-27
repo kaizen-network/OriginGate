@@ -2,6 +2,7 @@ package io.github.origingate.core.report;
 
 import io.github.origingate.core.TestSupport;
 import io.github.origingate.core.TestSupport.MutableClock;
+import io.github.origingate.core.lookup.AnsweredBy;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.rules.Decision;
@@ -30,6 +31,14 @@ class ReportTest {
         assertTrue(line.contains(" country_code=NL "), line);
         assertTrue(line.contains(" vpn=yes proxy=no source=provider note=\"flagged as VPN\""), line);
         assertTrue(!line.contains("\n"));
+    }
+
+    @Test void freshLookupNamesTheProvidersThatAnswered() {
+        IpInfo info = TestSupport.info("203.0.113.7", "Netherlands", "NL", true, false);
+        Decision decision = new Decision(Decision.Outcome.DENY, Rule.VPN, "flagged as VPN",
+                new LookupService.Result(info, LookupService.Source.PROVIDER, new AnsweredBy("maxmind", "proxycheck")), false);
+        String line = DecisionLine.format(TestSupport.player("ExamplePlayer", "203.0.113.7"), decision);
+        assertTrue(line.contains(" source=maxmind+proxycheck "), line);
     }
 
     @Test void lineWithoutLookup() {
