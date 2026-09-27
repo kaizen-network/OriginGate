@@ -77,7 +77,7 @@ Each decision is one line, for example `DENY rule=vpn player=Alex uuid=... ip=..
 | `all` | Every login |
 | `debug` | Every login, plus each step of the check |
 
-`log-file: true` writes the same lines as `matches` to `plugins/origingate/logs/<date>.log`, whatever the console level is. Files older than `max-age-days` are deleted.
+`log-file: true` writes the same lines as `matches` to `plugins/origingate/logs/<date>.log`, whatever the console level is. Files older than `log-file-keep-days` are deleted.
 
 ## ConsentGate
 

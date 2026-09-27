@@ -108,11 +108,12 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     public record Cleanup(int rows, int files) { }
 
-    /** Deletes stored lookups and log files older than {@code max-age-days}. Blocks. */
+    /** Deletes stored lookups older than {@code keep-days} and log files older than {@code log-file-keep-days}. Blocks. */
     public Cleanup deleteExpired() throws SQLException, IOException {
-        int days = config.storage().maxAgeDays();
-        int rows = storage.deleteOlderThan(clock.instant().minus(Duration.ofDays(days)));
-        int files = decisionFile == null ? 0 : decisionFile.deleteOlderThan(days);
+        int keepDays = config.storage().keepDays();
+        int rows = keepDays == 0 ? 0 : storage.deleteOlderThan(clock.instant().minus(Duration.ofDays(keepDays)));
+        int logDays = config.logFileKeepDays();
+        int files = decisionFile == null || logDays == 0 ? 0 : decisionFile.deleteOlderThan(logDays);
         return new Cleanup(rows, files);
     }
 

@@ -17,7 +17,8 @@ Updates keep your files. New settings are not added automatically; compare with 
 | `lookup.proxycheck.api-keys` | `[]` | Up to 32 keys, used in turn |
 | `lookup.proxycheck.request-timeout-millis` | `3500` | 500 to 20000, per request |
 | `storage.type` | `sqlite` | `sqlite` or `mysql` (also MariaDB) |
-| `storage.max-age-days` | `30` | 1 to 365. Lookups older than this are looked up again and deleted |
+| `storage.max-age-days` | `30` | 1 to 365. Lookups older than this are looked up again |
+| `storage.keep-days` | `30` | 0, or `max-age-days` to 3650. Lookups older than this are deleted. `0` keeps them forever. Each IP keeps only its latest lookup |
 | `storage.memory-cache-size` | `10000` | 100 to 1000000 lookups kept in memory |
 | `storage.sqlite.file` | `data/origingate.db` | Inside the plugin folder |
 | `storage.mysql.*` | | See [storage](03-storage-and-privacy.md) |
@@ -30,6 +31,7 @@ Updates keep your files. New settings are not added automatically; compare with 
 | `rules.country` | off | `mode: allowlist` or `denylist`, `countries` (codes), `bypass-permissions: [origingate.bypass.country]` |
 | `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts |
 | `log-file` | `true` | Daily log files of kicks, bypasses, and lookup failures |
+| `log-file-keep-days` | `30` | 0 to 3650. Log files older than this are deleted. `0` keeps them forever |
 
 Country codes are ISO 3166-1 two-letter codes such as `US`, `GB`, `ID`, in any case, plus `XK` for Kosovo. Unknown codes are refused.
 

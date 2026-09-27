@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Set;
 
 public record OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup lookup, Storage storage, Bypass bypass,
-                               Rules rules, List<String> alertPermissions, boolean logFile) {
+                               Rules rules, List<String> alertPermissions, boolean logFile, int logFileKeepDays) {
 
     /** How much the console shows per login. Each level includes the ones before it. */
     public enum ConsoleLog {
@@ -36,8 +36,8 @@ public record OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup loo
         }
     }
 
-    /** {@code type} is "sqlite" or "mysql". {@code mysql} is null for SQLite. */
-    public record Storage(String type, Path sqliteFile, Mysql mysql, int maxAgeDays,
+    /** {@code type} is "sqlite" or "mysql". {@code mysql} is null for SQLite. {@code keepDays} 0 means never delete. */
+    public record Storage(String type, Path sqliteFile, Mysql mysql, int maxAgeDays, int keepDays,
                           int memoryCacheSize) { }
 
     public record Mysql(String host, int port, String database, String username, String password, String sslMode,

@@ -31,12 +31,13 @@ public final class ConfigLoader {
     public static OriginGateConfig load(Path dataDirectory) throws ConfigException {
         Path root = dataDirectory.toAbsolutePath().normalize();
         YamlSection config = YamlSection.load(root.resolve("config.yml"));
-        config.allowOnly("config-version", "dry-run", "console-log", "lookup", "storage", "bypass", "rules", "alerts", "log-file");
+        config.allowOnly("config-version", "dry-run", "console-log", "lookup", "storage", "bypass", "rules", "alerts", "log-file",
+                "log-file-keep-days");
         config.integer("config-version", 1, 1);
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
                 lookup(config.section("lookup")),
                 storage(root, config.section("storage")), bypass(config.section("bypass")), rules(config.section("rules")),
-                alerts(config.section("alerts")), config.bool("log-file"));
+                alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650));
     }
 
     private static Lookup lookup(YamlSection lookup) throws ConfigException {
@@ -64,7 +65,7 @@ public final class ConfigLoader {
     }
 
     private static Storage storage(Path root, YamlSection storage) throws ConfigException {
-        storage.allowOnly("type", "max-age-days", "memory-cache-size", "sqlite", "mysql");
+        storage.allowOnly("type", "max-age-days", "keep-days", "memory-cache-size", "sqlite", "mysql");
         String type = storage.text("type", 1, 16).toLowerCase(Locale.ROOT);
         if (!type.equals("sqlite") && !type.equals("mysql")) throw new ConfigException(storage.key("type") + " must be sqlite or mysql");
         YamlSection sqlite = storage.section("sqlite");
@@ -89,8 +90,13 @@ public final class ConfigLoader {
                     section.integer("socket-timeout-millis", 100, 30000));
         }
         if (type.equals("mysql") && mysql == null) throw new ConfigException("Missing setting: " + storage.key("mysql"));
+        int maxAgeDays = storage.integer("max-age-days", 1, 365);
+        int keepDays = storage.integer("keep-days", 0, 3650);
+        if (keepDays != 0 && keepDays < maxAgeDays) {
+            throw new ConfigException(storage.key("keep-days") + " must be 0 or at least max-age-days (" + maxAgeDays + ")");
+        }
         return new Storage(type, sqliteFile, type.equals("mysql") ? mysql : null,
-                storage.integer("max-age-days", 1, 365), storage.integer("memory-cache-size", 100, 1_000_000));
+                maxAgeDays, keepDays, storage.integer("memory-cache-size", 100, 1_000_000));
     }
 
     private static Bypass bypass(YamlSection bypass) throws ConfigException {

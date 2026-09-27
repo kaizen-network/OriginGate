@@ -1,7 +1,9 @@
 package io.github.origingate.core;
 
 import com.sun.net.httpserver.HttpServer;
+import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.rules.LoginAttempt;
+import io.github.origingate.core.storage.SqlIpStorage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -189,9 +194,19 @@ class RuntimeCommandsTest {
         old.close();
     }
 
-    @Test void expiredDataIsDeleted() throws Exception {
+    @Test void expiredDataIsDeletedUnlessKeptForever() throws Exception {
+        load("storage.keep-days", 0, "log-file-keep-days", 0);
+        Instant old = Instant.now().minus(Duration.ofDays(400));
+        try (SqlIpStorage storage = SqlIpStorage.sqlite(directory.resolve("data/origingate.db"))) {
+            storage.save(new IpInfo("192.0.2.1", "Example Net", "Example Org", null, "Example City", "Example Region",
+                    "Canada", "CA", "AS64500", false, false, "Residential", old));
+        }
+        Path logs = Files.createDirectories(directory.resolve("logs"));
+        Files.writeString(logs.resolve(LocalDate.now().minusDays(400) + ".log"), "old\n");
+
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0), runtime.deleteExpired());
         load();
-        assertEquals(0, runtime.deleteExpired().rows());
+        assertEquals(new OriginGateRuntime.Cleanup(1, 1), runtime.deleteExpired());
     }
 
     @Test void commandsExplainWhenNotRunning() throws Exception {

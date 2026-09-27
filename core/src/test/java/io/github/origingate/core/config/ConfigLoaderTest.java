@@ -32,6 +32,8 @@ class ConfigLoaderTest {
         assertTrue(config.lookup().apiKeys().isEmpty());
         assertEquals("sqlite", config.storage().type());
         assertEquals(30, config.storage().maxAgeDays());
+        assertEquals(30, config.storage().keepDays());
+        assertEquals(30, config.logFileKeepDays());
         assertFalse(config.rules().country().enabled());
         assertFalse(config.rules().denyAddresses().enabled());
         assertTrue(config.rules().vpn().enabled());
@@ -80,10 +82,16 @@ class ConfigLoaderTest {
         assertEquals("Missing setting: dry-run", assertThrows(ConfigException.class, () -> ConfigLoader.load(directory)).getMessage());
     }
 
+    @Test void keepDaysMayEqualMaxAgeDays() throws Exception {
+        assertEquals(60, TestSupport.config(directory, "storage.max-age-days", 60, "storage.keep-days", 60).storage().keepDays());
+    }
+
     @Test void numbersAreBounded() {
         assertTrue(failure("lookup.wait-millis", 999).contains("lookup.wait-millis must be a whole number from 1000 to 20000"));
         assertTrue(failure("lookup.wait-millis", 20001).contains("lookup.wait-millis"));
         assertTrue(failure("storage.max-age-days", 0).contains("storage.max-age-days"));
+        assertTrue(failure("storage.keep-days", 29).contains("storage.keep-days must be 0 or at least max-age-days (30)"));
+        assertTrue(failure("log-file-keep-days", -1).contains("log-file-keep-days"));
         assertTrue(failure("lookup.proxycheck.request-timeout-millis", 100).contains("request-timeout-millis"));
         assertTrue(failure("dry-run", "yes").contains("dry-run must be true or false"));
     }

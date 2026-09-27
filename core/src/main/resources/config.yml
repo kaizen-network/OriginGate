@@ -35,8 +35,12 @@ lookup:
 storage:
   # sqlite (local file) or mysql (also for MariaDB). Saved lookups are not copied when switching.
   type: sqlite
-  # Lookups older than this many days (1-365) are looked up again and deleted from storage.
+  # Lookups older than this many days (1-365) are looked up again.
   max-age-days: 30
+  # Lookups older than this many days are deleted from storage. 0 keeps them forever.
+  # Otherwise it must be at least the max-age-days value above, up to 3650.
+  # Each IP keeps only its latest lookup, so a new lookup replaces the old one.
+  keep-days: 30
   # Most recent lookups kept in memory (100-1000000).
   memory-cache-size: 10000
   sqlite:
@@ -98,5 +102,6 @@ alerts:
   permissions: ["origingate.alerts"]
 
 # Write every login where a rule matched or the lookup failed to daily files in the logs folder.
-# Files older than max-age-days are deleted.
 log-file: true
+# Log files older than this many days (0-3650) are deleted. 0 keeps them forever.
+log-file-keep-days: 30

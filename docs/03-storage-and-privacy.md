@@ -51,6 +51,6 @@ While the database is down, each failed attempt makes OriginGate skip storage fo
 IP addresses and their lookup data are personal data.
 
 - The lookup provider receives the player's IP address and your API key. Nothing is sent anywhere else.
-- Stored lookups older than `max-age-days` are deleted every hour (first run one minute after start). Daily log files older than `max-age-days` are deleted at the same time.
+- Stored lookups older than `keep-days` are deleted every hour (first run one minute after start). Daily log files older than `log-file-keep-days` are deleted at the same time. A value of `0` turns off that deletion. Each IP has one row holding its latest lookup, so a new lookup replaces the old one.
 - `origingate cache clear <ip|all>` deletes lookups from memory and from OriginGate's table right away.
 - The console lines and log files contain IP addresses. Velocity's own proxy log is separate and follows its own settings.

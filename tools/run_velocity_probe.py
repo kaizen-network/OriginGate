@@ -217,6 +217,7 @@ lookup:
 storage:
   type: sqlite
   max-age-days: 30
+  keep-days: 30
   memory-cache-size: 1000
   sqlite:
     file: probe/{fixture}.db
@@ -244,6 +245,7 @@ rules:
 alerts:
   permissions: ["origingate.alerts"]
 log-file: true
+log-file-keep-days: 30
 """
 
 CONSENT_CONFIG = """\
