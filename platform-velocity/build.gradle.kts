@@ -28,6 +28,9 @@ tasks.shadowJar {
     mergeServiceFiles()
     relocate("org.yaml.snakeyaml", "io.github.origingate.internal.snakeyaml")
     relocate("org.mariadb.jdbc", "io.github.origingate.internal.mariadb")
+    relocate("com.maxmind.db", "io.github.origingate.internal.maxmind")
+    // maxmind-db ships a root module descriptor; the plugin is loaded from the class path, so it is not needed.
+    exclude("module-info.class")
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
 }
 

@@ -4,6 +4,7 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.7")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.10") { isTransitive = false }
+    implementation("com.maxmind.db:maxmind-db:4.2.0")
     // Supplied at runtime by the proxy (Velocity bundles Gson), so it is not shaded.
     compileOnly("com.google.code.gson:gson:2.10.1")
     testImplementation("com.google.code.gson:gson:2.10.1")

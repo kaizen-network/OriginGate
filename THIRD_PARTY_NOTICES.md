@@ -7,6 +7,7 @@ OriginGate is GPL-3.0-only. Bundled dependencies keep the licenses below. Their 
 | SnakeYAML | 2.7 | Apache-2.0 | Relocated to `io.github.origingate.internal.snakeyaml` |
 | Xerial SQLite JDBC | 3.53.4.0 | Apache-2.0, with the included Zentus BSD notice and SQLite public-domain code | Included with its native SQLite libraries |
 | MariaDB Connector/J | 3.5.10 | LGPL-2.1-or-later | Relocated to `io.github.origingate.internal.mariadb` |
+| MaxMind DB Reader | 4.2.0 | Apache-2.0 | Relocated to `io.github.origingate.internal.maxmind` |
 
 Relocation changes package names in bytecode and service descriptors. OriginGate does not edit these libraries' upstream Java sources. The Gradle scripts describe the changes. You can rebuild the project with a modified dependency and replace the resulting JAR; nothing prevents replacement.
 

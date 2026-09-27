@@ -18,6 +18,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
@@ -83,6 +84,15 @@ public final class TestSupport {
         Set<String> granted = Set.of(permissions);
         return new LoginAttempt(name, UUID.nameUUIDFromBytes(name.getBytes(StandardCharsets.UTF_8)),
                 Addresses.parse(ip).orElseThrow(), granted::contains);
+    }
+
+    /** Copies a test resource, for example "/maxmind/GeoLite2-Country-Test.mmdb", to {@code target}. */
+    public static void copyResource(String resource, Path target) throws IOException {
+        Files.createDirectories(target.getParent());
+        try (InputStream input = TestSupport.class.getResourceAsStream(resource)) {
+            if (input == null) throw new IOException("Missing test resource " + resource);
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     /** A chain that asks one provider for both jobs, like the default config. */
