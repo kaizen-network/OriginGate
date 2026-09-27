@@ -6,8 +6,13 @@ import io.github.origingate.core.config.OriginGateConfig.Bypass;
 import io.github.origingate.core.config.OriginGateConfig.CountryMode;
 import io.github.origingate.core.config.OriginGateConfig.CountryRule;
 import io.github.origingate.core.config.OriginGateConfig.FailureMode;
+import io.github.origingate.core.config.OriginGateConfig.IpApi;
+import io.github.origingate.core.config.OriginGateConfig.IpHub;
+import io.github.origingate.core.config.OriginGateConfig.IpInfoLite;
 import io.github.origingate.core.config.OriginGateConfig.Lookup;
+import io.github.origingate.core.config.OriginGateConfig.MaxMind;
 import io.github.origingate.core.config.OriginGateConfig.Mysql;
+import io.github.origingate.core.config.OriginGateConfig.ProxyCheck;
 import io.github.origingate.core.config.OriginGateConfig.ProxyRule;
 import io.github.origingate.core.config.OriginGateConfig.Rules;
 import io.github.origingate.core.config.OriginGateConfig.Storage;
@@ -34,15 +39,66 @@ public final class ConfigLoader {
         config.allowOnly("config-version", "dry-run", "console-log", "lookup", "storage", "bypass", "rules", "alerts", "log-file",
                 "log-file-keep-days");
         config.integer("config-version", 1, 1);
+        Lookup lookup = lookup(root, config.section("lookup"));
+        Rules rules = rules(config.section("rules"));
+        if (lookup.vpnFrom().isEmpty()) {
+            if (rules.vpn().enabled()) throw new ConfigException("lookup.vpn-from is empty, so rules.vpn must be disabled");
+            if (rules.proxy().enabled()) throw new ConfigException("lookup.vpn-from is empty, so rules.proxy must be disabled");
+        }
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
-                lookup(config.section("lookup")),
-                storage(root, config.section("storage")), bypass(config.section("bypass")), rules(config.section("rules")),
+                lookup, storage(root, config.section("storage")), bypass(config.section("bypass")), rules,
                 alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650));
     }
 
-    private static Lookup lookup(YamlSection lookup) throws ConfigException {
-        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "proxycheck");
-        YamlSection proxycheck = lookup.section("proxycheck");
+    private static Lookup lookup(Path root, YamlSection lookup) throws ConfigException {
+        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "country-from", "vpn-from",
+                "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
+        // Configs from before the provider lists used proxycheck for everything.
+        List<String> countryFrom = lookup.has("country-from") ? providers(lookup, "country-from") : List.of("proxycheck");
+        List<String> vpnFrom = lookup.has("vpn-from") ? providers(lookup, "vpn-from") : List.of("proxycheck");
+        if (countryFrom.isEmpty()) throw new ConfigException(lookup.key("country-from") + " needs at least one provider");
+        for (String name : vpnFrom) {
+            if (!Lookup.VPN_PROVIDERS.contains(name)) {
+                throw new ConfigException(lookup.key("vpn-from") + " cannot use " + name + ": its free data has no VPN check");
+            }
+        }
+        Set<String> listed = new LinkedHashSet<>(countryFrom);
+        listed.addAll(vpnFrom);
+        ProxyCheck proxycheck = wanted(lookup, "proxycheck", listed) ? proxycheck(lookup.section("proxycheck")) : null;
+        IpHub iphub = wanted(lookup, "iphub", listed) ? iphub(lookup.section("iphub")) : null;
+        IpApi ipApi = wanted(lookup, "ip-api", listed) ? ipApi(lookup.section("ip-api")) : null;
+        IpInfoLite ipinfo = wanted(lookup, "ipinfo", listed) ? ipinfo(lookup.section("ipinfo")) : null;
+        MaxMind maxmind = wanted(lookup, "maxmind", listed) ? maxmind(root, lookup.section("maxmind")) : null;
+        if (listed.contains("iphub") && iphub.apiKeys().isEmpty()) {
+            throw new ConfigException(lookup.key("iphub.api-keys") + " needs at least one key to use IPHub");
+        }
+        if (listed.contains("ipinfo") && ipinfo.token().isEmpty()) {
+            throw new ConfigException(lookup.key("ipinfo.token") + " must be set to use IPinfo");
+        }
+        return new Lookup(lookup.bool("skip-private-addresses"), lookup.choice("on-lookup-failure", FailureMode.class),
+                lookup.integer("wait-millis", 1000, 20000), countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind);
+    }
+
+    /** A provider block is read when present (so typos are caught) or when a list names the provider. */
+    private static boolean wanted(YamlSection lookup, String name, Set<String> listed) {
+        return lookup.has(name) || listed.contains(name);
+    }
+
+    private static List<String> providers(YamlSection lookup, String name) throws ConfigException {
+        List<String> result = new ArrayList<>();
+        for (String value : lookup.list(name, Lookup.PROVIDERS.size())) {
+            String provider = value.toLowerCase(Locale.ROOT);
+            if (!Lookup.PROVIDERS.contains(provider)) {
+                throw new ConfigException(lookup.key(name) + " has an unknown provider: " + value + ". Known providers: "
+                        + String.join(", ", Lookup.PROVIDERS));
+            }
+            if (result.contains(provider)) throw new ConfigException(lookup.key(name) + " lists " + provider + " twice");
+            result.add(provider);
+        }
+        return List.copyOf(result);
+    }
+
+    private static ProxyCheck proxycheck(YamlSection proxycheck) throws ConfigException {
         proxycheck.allowOnly("base-url", "api-keys", "request-timeout-millis");
         String base = proxycheck.text("base-url", 8, 256);
         URI baseUrl;
@@ -59,9 +115,47 @@ public final class ConfigLoader {
         for (String key : keys) {
             if (!key.matches("[A-Za-z0-9-]{1,64}")) throw new ConfigException(proxycheck.key("api-keys") + " contains an invalid key");
         }
-        return new Lookup(lookup.bool("skip-private-addresses"), lookup.choice("on-lookup-failure", FailureMode.class),
-                lookup.integer("wait-millis", 1000, 20000), baseUrl, keys,
-                proxycheck.integer("request-timeout-millis", 500, 20000));
+        return new ProxyCheck(baseUrl, keys, proxycheck.integer("request-timeout-millis", 500, 20000));
+    }
+
+    private static IpHub iphub(YamlSection iphub) throws ConfigException {
+        iphub.allowOnly("api-keys", "request-timeout-millis");
+        List<String> keys = iphub.list("api-keys", 32);
+        for (String key : keys) {
+            if (!key.matches("[A-Za-z0-9+/=_-]{1,128}")) throw new ConfigException(iphub.key("api-keys") + " contains an invalid key");
+        }
+        return new IpHub(keys, iphub.integer("request-timeout-millis", 500, 20000));
+    }
+
+    private static IpApi ipApi(YamlSection ipApi) throws ConfigException {
+        ipApi.allowOnly("api-key", "request-timeout-millis");
+        String key = ipApi.text("api-key", 0, 64);
+        if (!key.matches("[A-Za-z0-9_-]*")) throw new ConfigException(ipApi.key("api-key") + " is not a valid key");
+        return new IpApi(key, ipApi.integer("request-timeout-millis", 500, 20000));
+    }
+
+    private static IpInfoLite ipinfo(YamlSection ipinfo) throws ConfigException {
+        ipinfo.allowOnly("token", "request-timeout-millis");
+        String token = ipinfo.text("token", 0, 128);
+        if (!token.matches("[A-Za-z0-9_-]*")) throw new ConfigException(ipinfo.key("token") + " is not a valid token");
+        return new IpInfoLite(token, ipinfo.integer("request-timeout-millis", 500, 20000));
+    }
+
+    private static MaxMind maxmind(Path root, YamlSection maxmind) throws ConfigException {
+        maxmind.allowOnly("file", "edition", "account-id", "license-key");
+        Path file = inside(root, maxmind.text("file", 1, 256), maxmind.key("file"));
+        String edition = maxmind.text("edition", 1, 32);
+        if (!MaxMind.EDITIONS.contains(edition)) {
+            throw new ConfigException(maxmind.key("edition") + " must be GeoLite2-Country or GeoLite2-City");
+        }
+        int accountId = maxmind.integer("account-id", 0, Integer.MAX_VALUE);
+        String licenseKey = maxmind.text("license-key", 0, 128);
+        if (!licenseKey.matches("[A-Za-z0-9_]*")) throw new ConfigException(maxmind.key("license-key") + " is not a valid license key");
+        if ((accountId == 0) != licenseKey.isEmpty()) {
+            throw new ConfigException(maxmind.key("account-id") + " and " + maxmind.key("license-key")
+                    + " must both be set, or both be left as 0 and \"\"");
+        }
+        return new MaxMind(file, edition, accountId, licenseKey);
     }
 
     private static Storage storage(Path root, YamlSection storage) throws ConfigException {

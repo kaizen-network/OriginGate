@@ -28,8 +28,13 @@ class ConfigLoaderTest {
         assertFalse(config.dryRun());
         assertTrue(config.lookup().skipPrivateAddresses());
         assertEquals(OriginGateConfig.FailureMode.ALLOW, config.lookup().onFailure());
-        assertEquals("https://proxycheck.io/v3/", config.lookup().baseUrl().toString());
-        assertTrue(config.lookup().apiKeys().isEmpty());
+        assertEquals(List.of("proxycheck"), config.lookup().countryFrom());
+        assertEquals(List.of("proxycheck"), config.lookup().vpnFrom());
+        assertEquals("https://proxycheck.io/v3/", config.lookup().proxycheck().baseUrl().toString());
+        assertTrue(config.lookup().proxycheck().apiKeys().isEmpty());
+        assertFalse(config.lookup().ipApi().pro());
+        assertFalse(config.lookup().maxmind().autoUpdate());
+        assertEquals(directory.resolve("data/GeoLite2-Country.mmdb").toAbsolutePath().normalize(), config.lookup().maxmind().file());
         assertEquals("sqlite", config.storage().type());
         assertEquals(30, config.storage().maxAgeDays());
         assertEquals(30, config.storage().keepDays());
@@ -40,6 +45,77 @@ class ConfigLoaderTest {
         assertEquals(List.of("origingate.bypass.vpn"), config.rules().vpn().bypassPermissions());
         assertTrue(config.bypass().permissions().isEmpty());
         assertEquals(directory.resolve("data/origingate.db").toAbsolutePath().normalize(), config.storage().sqliteFile());
+    }
+
+    @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", TestSupport.REMOVE,
+                "lookup.vpn-from", TestSupport.REMOVE, "lookup.iphub", TestSupport.REMOVE, "lookup.ip-api", TestSupport.REMOVE,
+                "lookup.ipinfo", TestSupport.REMOVE, "lookup.maxmind", TestSupport.REMOVE);
+        assertEquals(List.of("proxycheck"), config.lookup().countryFrom());
+        assertEquals(List.of("proxycheck"), config.lookup().vpnFrom());
+        assertNull(config.lookup().iphub());
+        assertNull(config.lookup().maxmind());
+        assertEquals(3500, config.lookup().longestRequestMillis());
+    }
+
+    @Test void providerNamesAreChecked() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", List.of("MaxMind", "proxycheck"),
+                "lookup.vpn-from", List.of("proxycheck", "ip-api"));
+        assertEquals(List.of("maxmind", "proxycheck"), config.lookup().countryFrom());
+        assertEquals(List.of("maxmind", "proxycheck", "ip-api"), config.lookup().inUse());
+        assertTrue(failure("lookup.country-from", List.of("geoip")).startsWith("lookup.country-from has an unknown provider: geoip"));
+        assertEquals("lookup.vpn-from cannot use maxmind: its free data has no VPN check",
+                failure("lookup.vpn-from", List.of("maxmind")));
+        assertEquals("lookup.vpn-from cannot use ipinfo: its free data has no VPN check",
+                failure("lookup.vpn-from", List.of("ipinfo")));
+        assertEquals("lookup.country-from lists proxycheck twice", failure("lookup.country-from", List.of("proxycheck", "proxycheck")));
+        assertEquals("lookup.country-from needs at least one provider", failure("lookup.country-from", List.of()));
+    }
+
+    @Test void emptyVpnListNeedsTheVpnAndProxyRulesOff() throws Exception {
+        assertEquals("lookup.vpn-from is empty, so rules.vpn must be disabled", failure("lookup.vpn-from", List.of()));
+        assertEquals("lookup.vpn-from is empty, so rules.proxy must be disabled",
+                failure("lookup.vpn-from", List.of(), "rules.vpn.enabled", false));
+        OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", List.of("maxmind"), "lookup.vpn-from", List.of(),
+                "rules.vpn.enabled", false, "rules.proxy.enabled", false);
+        assertTrue(config.lookup().vpnFrom().isEmpty());
+        assertEquals(0, config.lookup().longestRequestMillis());
+    }
+
+    @Test void listedProvidersNeedTheirSettings() throws Exception {
+        assertEquals("lookup.iphub.api-keys needs at least one key to use IPHub", failure("lookup.vpn-from", List.of("iphub")));
+        assertEquals("lookup.ipinfo.token must be set to use IPinfo", failure("lookup.country-from", List.of("ipinfo")));
+        assertEquals("Missing setting: lookup.iphub",
+                failure("lookup.vpn-from", List.of("iphub"), "lookup.iphub", TestSupport.REMOVE));
+        assertEquals("Unknown setting: lookup.iphub.typo", failure("lookup.iphub.typo", true));
+        OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", List.of("iphub"),
+                "lookup.vpn-from", List.of("iphub"), "lookup.iphub.api-keys", List.of("abc+/="),
+                "lookup.iphub.request-timeout-millis", 2000);
+        assertEquals(List.of("abc+/="), config.lookup().iphub().apiKeys());
+        assertEquals(2000, config.lookup().longestRequestMillis());
+    }
+
+    @Test void maxmindSettingsAreChecked() throws Exception {
+        assertEquals("lookup.maxmind.edition must be GeoLite2-Country or GeoLite2-City",
+                failure("lookup.maxmind.edition", "GeoLite2-ASN"));
+        assertTrue(failure("lookup.maxmind.account-id", 123456).contains("must both be set"));
+        assertTrue(failure("lookup.maxmind.license-key", "abc_123").contains("must both be set"));
+        assertTrue(failure("lookup.maxmind.file", "../outside.mmdb").contains("inside the plugin folder"));
+        OriginGateConfig config = TestSupport.config(directory, "lookup.maxmind.account-id", 123456,
+                "lookup.maxmind.license-key", "abc_123", "lookup.maxmind.edition", "GeoLite2-City");
+        assertTrue(config.lookup().maxmind().autoUpdate());
+        assertEquals("GeoLite2-City", config.lookup().maxmind().edition());
+    }
+
+    @Test void secretsAreNotPrinted() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory,
+                "lookup.proxycheck.api-keys", List.of("secret-proxycheck"),
+                "lookup.iphub.api-keys", List.of("secret-iphub"),
+                "lookup.ip-api.api-key", "secret-ipapi",
+                "lookup.ipinfo.token", "secret-ipinfo",
+                "lookup.maxmind.account-id", 123456, "lookup.maxmind.license-key", "secret_maxmind");
+        String text = config.lookup().toString();
+        assertFalse(text.contains("secret"), text);
     }
 
     @Test void consoleLogLevels() throws Exception {

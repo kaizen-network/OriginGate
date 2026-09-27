@@ -81,7 +81,7 @@ public final class OriginGateRuntime implements AutoCloseable {
             log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
                     + "and sets up the table once the database answers.", null);
         }
-        Duration requestTimeout = Duration.ofMillis(config.lookup().requestTimeoutMillis());
+        Duration requestTimeout = Duration.ofMillis(config.lookup().proxycheck().requestTimeoutMillis());
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(requestTimeout)
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -90,7 +90,7 @@ public final class OriginGateRuntime implements AutoCloseable {
                 new ArrayBlockingQueue<>(QUEUE), threads(), new ThreadPoolExecutor.AbortPolicy());
         workers.allowCoreThreadTimeOut(true);
         Duration maxAge = Duration.ofDays(settings.maxAgeDays());
-        ProxyCheckProvider provider = new ProxyCheckProvider(http, config.lookup().baseUrl(), config.lookup().apiKeys(),
+        ProxyCheckProvider provider = new ProxyCheckProvider(http, config.lookup().proxycheck().baseUrl(), config.lookup().proxycheck().apiKeys(),
                 requestTimeout, clock, log, "OriginGate/" + VERSION);
         ProviderChain chain = new ProviderChain(List.of(provider), List.of(provider),
                 Duration.ofMillis(config.lookup().waitMillis()), clock, log);
@@ -153,7 +153,7 @@ public final class OriginGateRuntime implements AutoCloseable {
      * (up to {@code wait-millis} plus two requests), then closes it in the background.
      */
     public void retire() {
-        long graceMillis = config.lookup().waitMillis() + 2L * config.lookup().requestTimeoutMillis();
+        long graceMillis = config.lookup().waitMillis() + 2L * config.lookup().longestRequestMillis();
         Thread closer = new Thread(() -> {
             try {
                 Thread.sleep(graceMillis);

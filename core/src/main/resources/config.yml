@@ -23,6 +23,13 @@ lookup:
   on-lookup-failure: allow
   # Longest time a login waits for the lookup, in milliseconds (1000-20000).
   wait-millis: 5000
+  # Providers asked for the country, in order. When one fails, the next one is asked.
+  # Any of: proxycheck, iphub, ip-api, ipinfo, maxmind.
+  country-from: [proxycheck]
+  # Providers asked whether the IP is a VPN or proxy, in order. Any of: proxycheck, iphub, ip-api.
+  # A provider already asked for the country is not asked again.
+  # Leave empty ([]) for no VPN check; then the vpn and proxy rules below must be disabled.
+  vpn-from: [proxycheck]
   proxycheck:
     # proxycheck.io v3 API. Change only for testing.
     base-url: "https://proxycheck.io/v3/"
@@ -31,6 +38,27 @@ lookup:
     api-keys: []
     # Longest time for one API request, in milliseconds (500-20000).
     request-timeout-millis: 3500
+  iphub:
+    # Your IPHub API keys (iphub.info), used in turn. At least one is needed to use IPHub.
+    api-keys: []
+    request-timeout-millis: 3500
+  ip-api:
+    # Your ip-api.com Pro key. Leave empty for the free service, which uses plain HTTP and does not allow commercial use.
+    api-key: ""
+    request-timeout-millis: 3500
+  ipinfo:
+    # Your IPinfo token (ipinfo.io). Needed to use IPinfo. The free Lite plan gives the country only, no VPN check.
+    token: ""
+    request-timeout-millis: 3500
+  maxmind:
+    # MaxMind GeoLite2 database file, inside the plugin folder. Gives the country only, no VPN check.
+    file: data/GeoLite2-Country.mmdb
+    # Which file to download when account-id and license-key are set: GeoLite2-Country or GeoLite2-City.
+    edition: GeoLite2-Country
+    # Your free MaxMind account ID and license key, to download the file and keep it updated.
+    # Leave as 0 and "" to place the file yourself.
+    account-id: 0
+    license-key: ""
 
 storage:
   # sqlite (local file) or mysql (also for MariaDB). Saved lookups are not copied when switching.
@@ -78,11 +106,11 @@ rules:
     # IP addresses or CIDR ranges, for example ["203.0.113.0/24"].
     list: []
     bypass-permissions: []
-  # Kicks IPs that proxycheck.io flags as a VPN.
+  # Kicks IPs that the vpn-from provider flags as a VPN.
   vpn:
     enabled: true
     bypass-permissions: ["origingate.bypass.vpn"]
-  # Kicks IPs that proxycheck.io flags as a proxy.
+  # Kicks IPs that the vpn-from provider flags as a proxy (only proxycheck.io reports proxies separately).
   proxy:
     enabled: true
     # Proxies from these countries are allowed. Two-letter codes, for example [US, GB].

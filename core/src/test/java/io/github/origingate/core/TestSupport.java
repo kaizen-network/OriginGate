@@ -39,6 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class TestSupport {
     public static final Instant NOW = Instant.parse("2026-09-26T12:00:00Z");
 
+    /** Pass as a value to {@link #writeConfig} to remove that setting, for example to build an older config. */
+    public static final Object REMOVE = new Object();
+
     private TestSupport() { }
 
     /**
@@ -60,7 +63,8 @@ public final class TestSupport {
                 if (!(next instanceof Map)) throw new IllegalArgumentException("No section " + changes[i]);
                 section = (Map<String, Object>) next;
             }
-            section.put(path[path.length - 1], changes[i + 1]);
+            if (changes[i + 1] == REMOVE) section.remove(path[path.length - 1]);
+            else section.put(path[path.length - 1], changes[i + 1]);
         }
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
