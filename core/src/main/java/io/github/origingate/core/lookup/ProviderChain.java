@@ -9,8 +9,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -51,8 +53,9 @@ public final class ProviderChain {
     public Answer lookup(String ip) throws LookupException {
         Instant deadline = clock.instant().plus(budget);
         Map<String, IpInfo> answers = new HashMap<>();
+        Set<String> failed = new HashSet<>();
         List<String> problems = new ArrayList<>();
-        Named country = first(ip, countryFrom, true, answers, problems, deadline);
+        Named country = first(ip, countryFrom, true, answers, failed, problems, deadline);
         if (country == null) {
             String message = "No provider returned a country for " + ip + ": " + String.join("; ", problems);
             // Every provider that answered had no country, so asking again soon would likely give the same.
@@ -60,18 +63,22 @@ public final class ProviderChain {
             throw new LookupException(message);
         }
         if (vpnFrom.isEmpty()) return new Answer(merge(ip, country.info(), null), new AnsweredBy(country.name(), null));
-        Named vpn = first(ip, vpnFrom, false, answers, problems, deadline);
+        Named vpn = first(ip, vpnFrom, false, answers, failed, problems, deadline);
         if (vpn == null) {
             throw new LookupException("No provider answered the VPN check for " + ip + ": " + String.join("; ", problems));
         }
         return new Answer(merge(ip, country.info(), vpn.info()), new AnsweredBy(country.name(), vpn.name()));
     }
 
-    /** The first provider in {@code providers} with a usable answer, or null. Failures are added to {@code problems}. */
+    /**
+     * The first provider in {@code providers} with a usable answer, or null. Failures are added to {@code problems},
+     * and a provider that already failed in this lookup is not asked again.
+     */
     private Named first(String ip, List<LookupProvider> providers, boolean needsCountry, Map<String, IpInfo> answers,
-                        List<String> problems, Instant deadline) {
+                        Set<String> failed, List<String> problems, Instant deadline) {
         for (LookupProvider provider : providers) {
             String name = provider.name();
+            if (failed.contains(name)) continue;
             IpInfo info = answers.get(name);
             if (info == null) {
                 Instant now = clock.instant();
@@ -92,9 +99,11 @@ public final class ProviderChain {
                     log.warn(name + " refused the request (" + ex.getMessage() + "), skipping it for "
                             + REFUSED_PAUSE.toSeconds() + " seconds", null);
                     problems.add(name + ": " + ex.getMessage());
+                    failed.add(name);
                     continue;
                 } catch (LookupException | RuntimeException ex) {
                     problems.add(name + ": " + Text.message(ex));
+                    failed.add(name);
                     continue;
                 }
                 answers.put(name, info);

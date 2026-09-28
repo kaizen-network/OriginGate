@@ -29,7 +29,7 @@ public final class ProxyCheckProvider implements LookupProvider {
                               Log log, String userAgent) {
         this.http = new HttpLookup(http, requestTimeout, userAgent, LABEL);
         this.baseUrl = HttpLookup.withSlash(baseUrl);
-        this.keys = new KeyRotation(keys, LABEL, log);
+        this.keys = new KeyRotation(keys, LABEL, clock, log);
         this.clock = clock;
     }
 

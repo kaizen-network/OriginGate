@@ -52,7 +52,7 @@ A lookup has two jobs:
 
 The result takes the country, region, and city from the country answer, and the VPN and proxy flags, type, and operator from the VPN answer. The network provider, organisation, and ASN come from the VPN answer, or from the country answer when the VPN answer has none.
 
-The next provider is asked when one fails, times out, refuses its key, is rate-limited, or has no data. When either job gets no answer, the lookup fails and `on-lookup-failure` applies. No new provider is asked once `wait-millis` has passed. A provider that refuses its key or is rate-limited is skipped for 60 seconds.
+The next provider is asked when one fails, times out, refuses its key, is rate-limited, or has no data. When either job gets no answer, the lookup fails and `on-lookup-failure` applies. No new provider is asked once `wait-millis` has passed. A refused or rate-limited API key is skipped for 60 seconds, and the provider itself is skipped for 60 seconds once all of its keys are refused (or right away when it has no keys).
 
 With `vpn-from: []` there is no VPN check, and the `vpn` and `proxy` rules must be disabled.
 
@@ -92,7 +92,7 @@ OriginGate uses the v3 API (`https://proxycheck.io/v3/<ip>?key=<key>`). v3 retur
 | vpn, proxy | `detections.vpn`, `detections.proxy` |
 | operator name | `operator.name` (`operator` is `null` when unknown) |
 
-Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), the next key is tried once, then the lookup fails. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
+Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), the next key is tried once, then the lookup fails. A refused key is skipped for 60 seconds, so later lookups use the keys that still work. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
 
 ## Failures and dry-run
 

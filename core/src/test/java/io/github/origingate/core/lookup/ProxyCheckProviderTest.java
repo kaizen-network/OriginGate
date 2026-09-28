@@ -173,8 +173,20 @@ class ProxyCheckProviderTest {
         keyStatus.put("key-one", 401);
         keyStatus.put("key-two", 403);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
-        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        assertFalse(failure instanceof KeyRejectedException, "key-three is still unused");
         assertEquals(2, requests.size());
+        assertEquals("Google LLC", provider.lookup("8.8.8.8").provider());
+        assertEquals("/v3/8.8.8.8?key=key-three", requests.get(2));
+    }
+
+    @Test void allKeysRefusedIsAKeyRejection() throws Exception {
+        keyStatus.put("key-one", 401);
+        keyStatus.put("key-two", 403);
+        ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertEquals(2, requests.size(), "refused keys are not tried again for a while");
     }
 
     @Test void serverErrorIsNotRetried() throws Exception {

@@ -98,6 +98,16 @@ class IpHubProviderTest {
         assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
     }
 
+    @Test void refusedKeysAreSkippedWhileOtherKeysWork() throws Exception {
+        IpHubProvider provider = provider(List.of("key-one", "key-two", "key-three"), Map.of("key-one", 429, "key-two", 429));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        assertFalse(failure instanceof KeyRejectedException, "a working key is left, so the provider is not paused");
+        assertTrue(provider.lookup("8.8.8.8").vpn());
+        assertTrue(provider.lookup("8.8.8.8").vpn());
+        assertEquals(List.of("key-one", "key-two", "key-three", "key-three"),
+                server.requests.stream().map(request -> request.headers().getFirst("X-Key")).toList());
+    }
+
     @Test void serverErrorIsAPlainFailure() throws Exception {
         IpHubProvider provider = provider(List.of("key-one"), Map.of("key-one", 500));
         LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));

@@ -132,6 +132,15 @@ class ProviderChainTest {
         assertTrue(failure.getMessage().contains("no time left to ask next"), failure.getMessage());
     }
 
+    @Test void providerThatFailedIsNotAskedAgainForTheVpnCheck() throws Exception {
+        FakeProvider flaky = new FakeProvider("proxycheck").fail(IP, new LookupException("timed out"));
+        FakeProvider maxmind = new FakeProvider("maxmind").answer(countryOnly("GB"));
+        FakeProvider iphub = new FakeProvider("iphub").answer(info(IP, "Canada", "CA", true, false));
+        Answer answer = chain(List.of(flaky, maxmind), List.of(flaky, iphub)).lookup(IP);
+        assertEquals(1, flaky.calls.get());
+        assertEquals("iphub", answer.answeredBy().vpn());
+    }
+
     @Test void describeListsBothJobsInOrder() {
         FakeProvider maxmind = new FakeProvider("maxmind");
         FakeProvider proxycheck = new FakeProvider("proxycheck");
