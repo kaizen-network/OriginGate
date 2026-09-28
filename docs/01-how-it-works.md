@@ -54,7 +54,7 @@ The result takes the country, region, and city from the country answer, and the 
 
 The next provider is asked when one fails, times out, refuses its key, is rate-limited, or has no data. When either job gets no answer, the lookup fails and `on-lookup-failure` applies. No new provider is asked once `wait-millis` has passed. A refused or rate-limited API key is skipped for 60 seconds, and the provider itself is skipped for 60 seconds once all of its keys are refused (or right away when it has no keys).
 
-With `vpn-from: []` there is no VPN check, and the `vpn` and `proxy` rules must be disabled.
+With `vpn-from: []` there is no VPN check, and the `vpn` and `proxy` rules must be disabled. These lookups are kept in memory only and never saved, so a later config with VPN checks does not reuse them.
 
 | Provider | Kind | Country | VPN check | Free tier (checked 2026-09-27) |
 | --- | --- | --- | --- | --- |

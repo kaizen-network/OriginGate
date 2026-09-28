@@ -58,6 +58,18 @@ class LookupServiceTest {
         assertNull(get(false).answeredBy(), "memory results have no provider names");
     }
 
+    @Test void resultWithoutVpnCheckIsNotSaved() throws Exception {
+        ExecutorService single = Executors.newSingleThreadExecutor();
+        LookupService countryOnly = new LookupService(
+                new ProviderChain(List.of(provider), List.of(), Duration.ofSeconds(20), clock, Log.NONE), storage,
+                new MemoryCache(100, Duration.ofDays(30), clock), Duration.ofDays(30), single, clock, Log.NONE);
+        assertEquals(Source.PROVIDER, countryOnly.lookup(IP, false).get(10, TimeUnit.SECONDS).source());
+        single.shutdown();
+        assertTrue(single.awaitTermination(10, TimeUnit.SECONDS));
+        assertFalse(storage.rows.containsKey(IP), "a later config with VPN checks must not reuse it");
+        assertEquals(Source.MEMORY, countryOnly.lookup(IP, false).get(10, TimeUnit.SECONDS).source());
+    }
+
     @Test void providerResultIsSavedAndThenServedFromMemory() throws Exception {
         assertEquals(Source.PROVIDER, get(false).source());
         awaitSaved(IP);

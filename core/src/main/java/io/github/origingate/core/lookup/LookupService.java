@@ -90,8 +90,9 @@ public final class LookupService {
                 inFlight.remove(key, created);
                 if (failure == null) created.complete(result);
                 else created.completeExceptionally(failure);
-                // Saved after the waiting login already has its answer.
-                if (result != null && result.source() == Source.PROVIDER) save(result.info());
+                // Saved after the waiting login already has its answer. Without a VPN check the flags are not real, so
+                // the result stays in memory only: a later config with VPN checks must not reuse it from storage.
+                if (result != null && result.source() == Source.PROVIDER && providers.checksVpn()) save(result.info());
             });
         } catch (RejectedExecutionException ex) {
             inFlight.remove(key, created);

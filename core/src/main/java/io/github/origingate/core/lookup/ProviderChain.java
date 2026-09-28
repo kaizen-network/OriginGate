@@ -133,6 +133,11 @@ public final class ProviderChain {
         return first != null ? first : second;
     }
 
+    /** False when {@code vpn-from} is empty, so answers carry no real VPN or proxy flags. */
+    public boolean checksVpn() {
+        return !vpnFrom.isEmpty();
+    }
+
     /** For the startup line: "country from maxmind, proxycheck | vpn from proxycheck, iphub". */
     public String describe() {
         return "country from " + names(countryFrom) + " | vpn from " + (vpnFrom.isEmpty() ? "none" : names(vpnFrom));

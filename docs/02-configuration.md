@@ -14,7 +14,7 @@ Updates keep your files. New settings are not added automatically; compare with 
 | `lookup.on-lookup-failure` | `allow` | `allow` or `deny` |
 | `lookup.wait-millis` | `5000` | 1000 to 20000. Longest time a login is held |
 | `lookup.country-from` | `[proxycheck]` | Providers asked for the country, in order. See [providers](01-how-it-works.md#providers) |
-| `lookup.vpn-from` | `[proxycheck]` | Providers asked for the VPN check, in order: `proxycheck`, `iphub`, `ip-api`. `[]` for none, then the `vpn` and `proxy` rules must be off |
+| `lookup.vpn-from` | `[proxycheck]` | Providers asked for the VPN check, in order: `proxycheck`, `iphub`, `ip-api`. `[]` for none, then the `vpn` and `proxy` rules must be off, and lookups are kept in memory only |
 | `lookup.proxycheck.base-url` | `https://proxycheck.io/v3/` | Change only for testing |
 | `lookup.proxycheck.api-keys` | `[]` | Up to 32 keys, used in turn |
 | `lookup.iphub.api-keys` | `[]` | Up to 32 keys, used in turn. At least one when IPHub is listed |

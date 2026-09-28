@@ -28,7 +28,7 @@ lookup:
   country-from: [proxycheck]
   # Providers asked whether the IP is a VPN or proxy, in order. Any of: proxycheck, iphub, ip-api.
   # A provider already asked for the country is not asked again.
-  # Leave empty ([]) for no VPN check; then the vpn and proxy rules below must be disabled.
+  # Leave empty ([]) for no VPN check; then the vpn and proxy rules below must be disabled, and lookups are not saved.
   vpn-from: [proxycheck]
   proxycheck:
     # proxycheck.io v3 API. Change only for testing.
