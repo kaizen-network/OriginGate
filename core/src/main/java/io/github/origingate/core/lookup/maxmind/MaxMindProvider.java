@@ -71,7 +71,7 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
                 + "and license-key to update it automatically.");
     }
 
-    @Override public IpInfo lookup(String ip) throws LookupException {
+    @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
         Reader current = reader.get();
         if (current == null) throw new LookupException("the MaxMind file is not loaded");
         InetAddress address = Addresses.parse(ip).orElseThrow(() -> new LookupException("not an IP address: " + ip));

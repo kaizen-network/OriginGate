@@ -84,33 +84,33 @@ class IpHubProviderTest {
     @Test void sendsKeyInHeaderAndRotatesKeys() throws Exception {
         IpHubProvider provider = provider(List.of("key-one", "key-two"), Map.of());
         assertEquals("iphub", provider.name());
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals("/ip/8.8.8.8", server.requests.get(0).uri().toString());
         assertEquals(List.of("key-one", "key-two"),
                 server.requests.stream().map(request -> request.headers().getFirst("X-Key")).toList());
     }
 
     @Test void ipv6AddressReachesTheServerUnchanged() throws Exception {
-        provider(List.of("key-one"), Map.of()).lookup("2001:db8::1");
+        provider(List.of("key-one"), Map.of()).lookup("2001:db8::1", TestSupport.NO_DEADLINE);
         assertEquals("/ip/2001:db8::1", server.requests.get(0).uri().getPath());
     }
 
     @Test void rateLimitedKeyIsFollowedByTheNextKey() throws Exception {
         IpHubProvider provider = provider(List.of("key-one", "key-two"), Map.of("key-one", 429));
-        assertTrue(provider.lookup("8.8.8.8").vpn());
+        assertTrue(provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).vpn());
         assertEquals(2, server.requests.size());
     }
 
     @Test void allKeysRefusedIsAKeyRejection() throws Exception {
         IpHubProvider provider = provider(List.of("key-one", "key-two"), Map.of("key-one", 403, "key-two", 401));
-        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
     }
 
     @Test void refusedKeysAreSkippedUntilAWorkingKeyAnswers() throws Exception {
         IpHubProvider provider = provider(List.of("key-one", "key-two", "key-three"), Map.of("key-one", 429, "key-two", 429));
-        assertTrue(provider.lookup("8.8.8.8").vpn());
-        assertTrue(provider.lookup("8.8.8.8").vpn());
+        assertTrue(provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).vpn());
+        assertTrue(provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).vpn());
         assertEquals(List.of("key-one", "key-two", "key-three", "key-three"), keysSent());
     }
 
@@ -118,20 +118,34 @@ class IpHubProviderTest {
         TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
         Map<String, Integer> keyStatus = new ConcurrentHashMap<>(Map.of("key-one", 429));
         IpHubProvider provider = provider(List.of("key-one", "key-two"), keyStatus, clock);
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals(List.of("key-one", "key-two", "key-two", "key-two"), keysSent());
         keyStatus.clear();
         clock.advance(ProviderChain.REFUSED_PAUSE.plusSeconds(1));
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals(List.of("key-two", "key-one"), keysSent().subList(4, 6));
+    }
+
+    @Test void keyRetriesStopAtTheLookupDeadline() throws Exception {
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        server = new TestServer(request -> {
+            clock.advance(Duration.ofSeconds(3));
+            return Reply.text(429, "{}");
+        });
+        IpHubProvider provider = new IpHubProvider(HttpClient.newHttpClient(), server.uri("/ip/"),
+                List.of("key-one", "key-two", "key-three", "key-four"), Duration.ofSeconds(3), clock, Log.NONE, "OriginGate/test");
+        LookupException failure = assertThrows(LookupException.class,
+                () -> provider.lookup("8.8.8.8", TestSupport.NOW.plusSeconds(5)));
+        assertFalse(failure instanceof KeyRejectedException, "keys three and four were never tried");
+        assertEquals(2, server.requests.size());
     }
 
     @Test void serverErrorIsAPlainFailure() throws Exception {
         IpHubProvider provider = provider(List.of("key-one"), Map.of("key-one", 500));
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertFalse(failure instanceof KeyRejectedException);
     }
 }

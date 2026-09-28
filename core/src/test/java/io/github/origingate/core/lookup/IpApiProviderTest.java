@@ -62,12 +62,12 @@ class IpApiProviderTest {
     @Test void freeRequestHasNoKey() throws Exception {
         IpApiProvider provider = provider("", 200, read("8.8.8.8.json"));
         assertEquals("ip-api", provider.name());
-        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals("/json/8.8.8.8?fields=" + IpApiProvider.FIELDS, server.requests.get(0).uri().toString());
     }
 
     @Test void proRequestSendsTheKeyAndKeepsIpv6() throws Exception {
-        provider("pro-key", 200, read("8.8.8.8.json")).lookup("2001:db8::1");
+        provider("pro-key", 200, read("8.8.8.8.json")).lookup("2001:db8::1", TestSupport.NO_DEADLINE);
         URI uri = server.requests.get(0).uri();
         assertEquals("/json/2001:db8::1", uri.getPath());
         assertEquals("fields=" + IpApiProvider.FIELDS + "&key=pro-key", uri.getRawQuery());
@@ -76,13 +76,13 @@ class IpApiProviderTest {
     @Test void refusedKeyIsAKeyRejection() throws Exception {
         IpApiProvider provider = provider("bad-key", 403,
                 "{\"status\":\"fail\",\"message\":\"invalid/expired key, renew at https://members.ip-api.com/order\"}");
-        KeyRejectedException refused = assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        KeyRejectedException refused = assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertTrue(refused.getMessage().contains("invalid/expired key"), refused.getMessage());
     }
 
     @Test void rateLimitIsAKeyRejection() throws Exception {
         IpApiProvider provider = provider("", 429, "");
-        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
     }
 
     @Test void endpointsMatchTheDocs() {

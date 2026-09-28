@@ -101,7 +101,7 @@ class MaxMindUpdaterTest {
 
     @Test void firstRunDownloadsAndLoadsTheFile() throws Exception {
         assertEquals(MaxMindUpdater.Outcome.DOWNLOADED, updater("test-key").update());
-        assertEquals("GB", provider.lookup("81.2.69.160").countryCode());
+        assertEquals("GB", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).countryCode());
         assertEquals(released, Files.getLastModifiedTime(file()).toInstant());
         assertEquals(1, downloads.get());
     }
@@ -140,7 +140,7 @@ class MaxMindUpdaterTest {
         released = released.plus(Duration.ofDays(1));
         archive = "not a gzip archive".getBytes(StandardCharsets.US_ASCII);
         assertThrows(IOException.class, updater::update);
-        assertEquals("GB", provider.lookup("81.2.69.160").countryCode());
+        assertEquals("GB", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).countryCode());
         assertEquals(List.of(file()), filesInDataFolder());
     }
 

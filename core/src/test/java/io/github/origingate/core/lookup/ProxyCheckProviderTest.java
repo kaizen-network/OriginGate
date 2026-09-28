@@ -143,29 +143,29 @@ class ProxyCheckProviderTest {
 
     @Test void sendsKeyAsSeparateParameterAndRotatesKeys() throws Exception {
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
-        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals(List.of("/v3/8.8.8.8?key=key-one", "/v3/8.8.8.8?key=key-two", "/v3/8.8.8.8?key=key-one"), requests);
         assertEquals("OriginGate/test", userAgents.get(0));
     }
 
     @Test void noKeysSendsNoKeyParameter() throws Exception {
-        provider(List.of(), 3000).lookup("8.8.8.8");
+        provider(List.of(), 3000).lookup("8.8.8.8", TestSupport.NO_DEADLINE);
         assertEquals(List.of("/v3/8.8.8.8"), requests);
     }
 
     @Test void rateLimitedKeyIsFollowedByOneTryWithTheNextKey() throws Exception {
         keyStatus.put("key-one", 429);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
-        assertEquals("Google LLC", provider.lookup("8.8.8.8").provider());
+        assertEquals("Google LLC", provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).provider());
         assertEquals(List.of("/v3/8.8.8.8?key=key-one", "/v3/8.8.8.8?key=key-two"), requests);
     }
 
     @Test void deniedStatusInBodyAlsoMovesToTheNextKey() throws Exception {
         keyStatus.put("key-one", -1);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
-        assertEquals("Google LLC", provider.lookup("8.8.8.8").provider());
+        assertEquals("Google LLC", provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).provider());
         assertEquals(2, requests.size());
     }
 
@@ -173,7 +173,7 @@ class ProxyCheckProviderTest {
         keyStatus.put("key-one", 401);
         keyStatus.put("key-two", 403);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
-        assertEquals("Google LLC", provider.lookup("8.8.8.8").provider());
+        assertEquals("Google LLC", provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).provider());
         assertEquals(List.of("/v3/8.8.8.8?key=key-one", "/v3/8.8.8.8?key=key-two", "/v3/8.8.8.8?key=key-three"), requests);
     }
 
@@ -181,15 +181,15 @@ class ProxyCheckProviderTest {
         keyStatus.put("key-one", 401);
         keyStatus.put("key-two", 403);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
-        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
-        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertEquals(2, requests.size(), "refused keys are not tried again for a while");
     }
 
     @Test void serverErrorIsNotRetried() throws Exception {
         keyStatus.put("key-one", 500);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertFalse(failure instanceof KeyRejectedException);
         assertEquals(1, requests.size());
     }
@@ -197,7 +197,7 @@ class ProxyCheckProviderTest {
     @Test void slowAnswerTimesOut() throws Exception {
         delayMillis = 2000;
         ProxyCheckProvider provider = provider(List.of(), 500);
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertTrue(failure.getMessage().contains("did not answer within 500 ms"), failure.getMessage());
     }
 

@@ -42,6 +42,9 @@ public final class TestSupport {
     /** Pass as a value to {@link #writeConfig} to remove that setting, for example to build an older config. */
     public static final Object REMOVE = new Object();
 
+    /** A provider lookup deadline that never passes. */
+    public static final Instant NO_DEADLINE = Instant.MAX;
+
     private TestSupport() { }
 
     /**
@@ -155,7 +158,7 @@ public final class TestSupport {
             return this;
         }
 
-        @Override public IpInfo lookup(String ip) throws LookupException {
+        @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
             calls.incrementAndGet();
             Runnable hook = onLookup;
             if (hook != null) hook.run();

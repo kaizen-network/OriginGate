@@ -33,7 +33,8 @@ final class KeyRotation {
         this.log = log;
     }
 
-    IpInfo lookup(Request request) throws LookupException {
+    /** No request after the first is started once {@code deadline} has passed. */
+    IpInfo lookup(Request request, Instant deadline) throws LookupException {
         if (keys.isEmpty()) return request.send(null);
         int index = usable(Math.floorMod(next.getAndIncrement(), keys.size()));
         if (index < 0) throw new KeyRejectedException("all " + keys.size() + " API keys were refused in the last minute");
@@ -46,6 +47,13 @@ final class KeyRotation {
                 refuse(index);
                 last = ex;
                 int following = usable((index + 1) % keys.size());
+                if (following >= 0 && !clock.instant().isBefore(deadline)) {
+                    log.warn(label + " refused API key " + (index + 1) + " (" + ex.getMessage() + "), no time left to try key "
+                            + (following + 1), null);
+                    // Other keys may still work, so this is a failed lookup, not a reason to pause the provider.
+                    throw new LookupException(label + " refused API key " + (index + 1) + " and the lookup ran out of time: "
+                            + ex.getMessage());
+                }
                 log.warn(label + " refused API key " + (index + 1) + " (" + ex.getMessage() + "), "
                         + (following < 0 ? "no other key is left" : "trying key " + (following + 1)), null);
                 index = following;

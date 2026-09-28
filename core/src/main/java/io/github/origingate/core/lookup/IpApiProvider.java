@@ -36,7 +36,7 @@ public final class IpApiProvider implements LookupProvider {
 
     @Override public String name() { return "ip-api"; }
 
-    @Override public IpInfo lookup(String ip) throws LookupException {
+    @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
         String query = "?fields=" + FIELDS + (key.isEmpty() ? "" : "&key=" + URLEncoder.encode(key, StandardCharsets.UTF_8));
         HttpLookup.Response response = http.get(URI.create(baseUrl + ip + query), Map.of());
         int code = response.status();

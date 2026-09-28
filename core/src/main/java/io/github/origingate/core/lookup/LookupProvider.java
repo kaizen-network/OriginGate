@@ -1,9 +1,12 @@
 package io.github.origingate.core.lookup;
 
+import java.time.Instant;
+
 /** Looks up one IP address from an external service or file. Called from a worker thread. */
 public interface LookupProvider {
     /** The name used in {@code country-from}, {@code vpn-from}, and logs, for example "proxycheck". */
     String name();
 
-    IpInfo lookup(String ip) throws LookupException;
+    /** {@code deadline} is when the lookup gives up; a provider that retries with other keys starts no request after it. */
+    IpInfo lookup(String ip, Instant deadline) throws LookupException;
 }

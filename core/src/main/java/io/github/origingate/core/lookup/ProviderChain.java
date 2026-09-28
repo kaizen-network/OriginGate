@@ -93,7 +93,7 @@ public final class ProviderChain {
                 }
                 log.debug("Asking " + name + " about " + ip);
                 try {
-                    info = provider.lookup(ip);
+                    info = provider.lookup(ip, deadline);
                 } catch (KeyRejectedException ex) {
                     pausedUntil.put(name, clock.instant().plus(REFUSED_PAUSE));
                     log.warn(name + " refused the request (" + ex.getMessage() + "), skipping it for "

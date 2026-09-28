@@ -34,8 +34,8 @@ public final class IpHubProvider implements LookupProvider {
 
     @Override public String name() { return "iphub"; }
 
-    @Override public IpInfo lookup(String ip) throws LookupException {
-        return keys.lookup(key -> request(ip, key));
+    @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
+        return keys.lookup(key -> request(ip, key), deadline);
     }
 
     private IpInfo request(String ip, String key) throws LookupException {

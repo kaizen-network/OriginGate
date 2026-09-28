@@ -92,7 +92,7 @@ OriginGate uses the v3 API (`https://proxycheck.io/v3/<ip>?key=<key>`). v3 retur
 | vpn, proxy | `detections.vpn`, `detections.proxy` |
 | operator name | `operator.name` (`operator` is `null` when unknown) |
 
-Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), that key is skipped for 60 seconds and the next key is tried, until one works. When every key is refused, the next provider in the list is asked, or the lookup fails when there is none. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
+Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), that key is skipped for 60 seconds and the next key is tried, until one works or `wait-millis` has passed. When every key is refused, the next provider in the list is asked, or the lookup fails when there is none. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
 
 ## Failures and dry-run
 

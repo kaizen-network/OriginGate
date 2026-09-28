@@ -32,7 +32,7 @@ public final class IpInfoProvider implements LookupProvider {
 
     @Override public String name() { return "ipinfo"; }
 
-    @Override public IpInfo lookup(String ip) throws LookupException {
+    @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
         URI uri = URI.create(baseUrl + ip + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8));
         HttpLookup.Response response = http.get(uri, Map.of());
         int code = response.status();

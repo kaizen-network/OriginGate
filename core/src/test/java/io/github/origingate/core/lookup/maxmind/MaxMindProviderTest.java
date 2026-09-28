@@ -38,22 +38,22 @@ class MaxMindProviderTest {
     }
 
     @Test void countryFileGivesCountryOnly() throws Exception {
-        IpInfo info = open("GeoLite2-Country-Test.mmdb", TestSupport.NOW).lookup("81.2.69.160");
+        IpInfo info = open("GeoLite2-Country-Test.mmdb", TestSupport.NOW).lookup("81.2.69.160", TestSupport.NO_DEADLINE);
         assertEquals("maxmind", provider.name());
         assertEquals("GB", info.countryCode());
         assertEquals("United Kingdom", info.country());
         assertNull(info.city());
         assertFalse(info.vpn());
         assertEquals(TestSupport.NOW, info.checkedAt());
-        assertEquals("JP", provider.lookup("2001:218::").countryCode());
+        assertEquals("JP", provider.lookup("2001:218::", TestSupport.NO_DEADLINE).countryCode());
     }
 
     @Test void cityFileAddsCityAndRegion() throws Exception {
         open("GeoLite2-City-Test.mmdb", TestSupport.NOW);
-        IpInfo london = provider.lookup("81.2.69.160");
+        IpInfo london = provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE);
         assertEquals("London", london.city());
         assertEquals("England", london.region());
-        IpInfo milton = provider.lookup("216.160.83.56");
+        IpInfo milton = provider.lookup("216.160.83.56", TestSupport.NO_DEADLINE);
         assertEquals("US", milton.countryCode());
         assertEquals("Milton", milton.city());
         assertEquals("Washington", milton.region());
@@ -61,14 +61,14 @@ class MaxMindProviderTest {
 
     @Test void ipWithoutEntryFails() throws Exception {
         open("GeoLite2-Country-Test.mmdb", TestSupport.NOW);
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         assertTrue(failure.getMessage().contains("no entry"), failure.getMessage());
     }
 
     @Test void missingFileIsSkippedNotFatal() {
         provider = new MaxMindProvider(directory.resolve("missing.mmdb"), Clock.systemUTC(), Log.NONE);
         assertFalse(provider.reload());
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("81.2.69.160"));
+        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE));
         assertTrue(failure.getMessage().contains("not loaded"), failure.getMessage());
     }
 
@@ -76,7 +76,7 @@ class MaxMindProviderTest {
         open("GeoLite2-Country-Test.mmdb", TestSupport.NOW);
         Files.writeString(directory.resolve("GeoLite2.mmdb"), "not a database");
         assertFalse(provider.reload());
-        assertEquals("GB", provider.lookup("81.2.69.160").countryCode());
+        assertEquals("GB", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).countryCode());
     }
 
     @Test void oldFileGetsAWarning() throws Exception {

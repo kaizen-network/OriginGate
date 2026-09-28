@@ -55,7 +55,7 @@ class IpInfoProviderTest {
     @Test void sendsTokenAndKeepsIpv6() throws Exception {
         IpInfoProvider provider = provider(200, read("8.8.8.8.json"));
         assertEquals("ipinfo", provider.name());
-        provider.lookup("2001:db8::1");
+        provider.lookup("2001:db8::1", TestSupport.NO_DEADLINE);
         URI uri = server.requests.get(0).uri();
         assertEquals("/lite/2001:db8::1", uri.getPath());
         assertEquals("token=test-token", uri.getRawQuery());
@@ -63,10 +63,10 @@ class IpInfoProviderTest {
 
     @Test void refusedTokenAndRateLimitAreKeyRejections() throws Exception {
         IpInfoProvider refused = provider(403, "{}");
-        assertThrows(KeyRejectedException.class, () -> refused.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> refused.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
         server.close();
         IpInfoProvider limited = provider(429, "{}");
-        assertThrows(KeyRejectedException.class, () -> limited.lookup("8.8.8.8"));
+        assertThrows(KeyRejectedException.class, () -> limited.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
     }
 
     @Test void endpointMatchesTheDocs() {
