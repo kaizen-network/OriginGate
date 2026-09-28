@@ -16,6 +16,7 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -99,10 +100,23 @@ class MaxMindUpdaterTest {
         }
     }
 
+    private String recordedRelease() throws IOException {
+        return Files.readString(file().resolveSibling("GeoLite2-Country.mmdb.release"));
+    }
+
     @Test void firstRunDownloadsAndLoadsTheFile() throws Exception {
         assertEquals(MaxMindUpdater.Outcome.DOWNLOADED, updater("test-key").update());
         assertEquals("GB", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).countryCode());
-        assertEquals(released, Files.getLastModifiedTime(file()).toInstant());
+        assertTrue(recordedRelease().contains("released=" + released), recordedRelease());
+        assertEquals(1, downloads.get());
+    }
+
+    @Test void fileNotDownloadedByTheUpdaterIsReplaced() throws Exception {
+        // An old database placed by hand, with a file time newer than MaxMind's latest release.
+        TestSupport.copyResource("/maxmind/GeoLite2-Country-Test.mmdb", file());
+        Files.setLastModifiedTime(file(), FileTime.from(released.plus(Duration.ofDays(3))));
+        assertTrue(provider.reload());
+        assertEquals(MaxMindUpdater.Outcome.DOWNLOADED, updater("test-key").update());
         assertEquals(1, downloads.get());
     }
 
@@ -119,7 +133,7 @@ class MaxMindUpdaterTest {
         released = released.plus(Duration.ofDays(7));
         assertEquals(MaxMindUpdater.Outcome.DOWNLOADED, updater.update());
         assertEquals(2, downloads.get());
-        assertEquals(released, Files.getLastModifiedTime(file()).toInstant());
+        assertTrue(recordedRelease().contains("released=" + released), recordedRelease());
     }
 
     @Test void wrongLicenseKeyFails() {
@@ -141,7 +155,8 @@ class MaxMindUpdaterTest {
         archive = "not a gzip archive".getBytes(StandardCharsets.US_ASCII);
         assertThrows(IOException.class, updater::update);
         assertEquals("GB", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).countryCode());
-        assertEquals(List.of(file()), filesInDataFolder());
+        assertTrue(Files.exists(file()));
+        assertTrue(filesInDataFolder().stream().noneMatch(path -> path.toString().endsWith(".download")), filesInDataFolder().toString());
     }
 
     @Test void wrongEditionIsRefused() throws Exception {

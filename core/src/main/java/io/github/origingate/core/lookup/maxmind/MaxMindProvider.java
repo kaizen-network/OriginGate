@@ -60,11 +60,16 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
         }
     }
 
+    /** When the file in use was built, from its metadata, or empty when no file is loaded. */
+    public Optional<Instant> buildTime() {
+        Reader current = reader.get();
+        return current == null ? Optional.empty() : Optional.of(current.getMetadata().buildTime());
+    }
+
     /** A warning when the file in use is older than {@link #STALE_AFTER}, for owners who update it themselves. */
     public Optional<String> staleWarning() {
-        Reader current = reader.get();
-        if (current == null) return Optional.empty();
-        Instant built = current.getMetadata().buildTime();
+        if (buildTime().isEmpty()) return Optional.empty();
+        Instant built = buildTime().get();
         if (!built.isBefore(clock.instant().minus(STALE_AFTER))) return Optional.empty();
         return Optional.of("The MaxMind file " + file.getFileName() + " was built on " + LocalDate.ofInstant(built, ZoneOffset.UTC)
                 + ". MaxMind's license asks for updates within 30 days of a new release. Set lookup.maxmind.account-id "

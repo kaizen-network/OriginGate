@@ -4,6 +4,7 @@ import com.maxmind.db.Reader;
 import io.github.origingate.core.Log;
 import io.github.origingate.core.Text;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -15,19 +16,21 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Base64;
+import java.util.Optional;
+import java.util.Properties;
 
 /**
  * Downloads the MaxMind file with the owner's account ID and license key, and replaces it when MaxMind has a
  * newer release. Format reference: https://dev.maxmind.com/geoip/updating-databases/
- * A HEAD request reads Last-Modified (MaxMind says HEAD does not count toward the download limit). The file's
- * modified time is set to that date, so the next check needs no other state. MaxMind redirects to a storage host;
+ * A HEAD request reads Last-Modified (MaxMind says HEAD does not count toward the download limit). After a download,
+ * that release date and the file's build date go into {@code <file>.release}; a download is skipped only when the file
+ * in use has that build date, so a file placed or restored by hand is replaced. MaxMind redirects to a storage host;
  * the redirect is followed by hand so the credentials are sent only to MaxMind.
  */
 public final class MaxMindUpdater {
@@ -44,6 +47,7 @@ public final class MaxMindUpdater {
     private final String authorization;
     private final MaxMindProvider provider;
     private final Path file;
+    private final Path releaseFile;
     private final Log log;
     private final String userAgent;
 
@@ -57,6 +61,7 @@ public final class MaxMindUpdater {
                 .encodeToString((accountId + ":" + licenseKey).getBytes(StandardCharsets.UTF_8));
         this.provider = provider;
         this.file = file;
+        this.releaseFile = file.resolveSibling(file.getFileName() + ".release");
         this.log = log;
         this.userAgent = userAgent;
     }
@@ -70,28 +75,45 @@ public final class MaxMindUpdater {
         }
     }
 
-    /** Checks once and downloads when MaxMind has a newer release than the file on disk. Blocks. */
+    /** Checks once and downloads unless the file in use is the one downloaded for the latest release. Blocks. */
     public Outcome update() throws IOException {
         Instant released = lastModified(send("HEAD", HttpResponse.BodyHandlers.discarding()));
-        if (Files.isRegularFile(file) && !Files.getLastModifiedTime(file).toInstant().isBefore(released)) {
-            return Outcome.UP_TO_DATE;
-        }
+        if (isCurrent(released)) return Outcome.UP_TO_DATE;
         Files.createDirectories(file.getParent());
         Path temp = Files.createTempFile(file.getParent(), file.getFileName().toString(), ".download");
+        Instant built;
         try {
             HttpResponse<InputStream> download = send("GET", HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = download.body()) {
                 TarGz.extract(body, ".mmdb", temp, MAX_FILE_BYTES);
             }
-            check(temp);
-            Files.setLastModifiedTime(temp, FileTime.from(released));
+            built = check(temp);
             move(temp, file);
         } finally {
             Files.deleteIfExists(temp);
         }
+        Files.writeString(releaseFile, "# Written by OriginGate's MaxMind updater. Delete it to download the file again.\n"
+                + "released=" + released + "\nbuilt=" + built + "\n", StandardCharsets.UTF_8);
         provider.reload();
         log.info("Downloaded MaxMind " + edition + " released " + released);
         return Outcome.DOWNLOADED;
+    }
+
+    /**
+     * True when {@code <file>.release} records {@code released} or a later release, and its build date matches the
+     * file in use. Anything else (no record, a file placed or restored by hand, a file that did not load) is not trusted.
+     */
+    private boolean isCurrent(Instant released) {
+        Optional<Instant> inUse = provider.buildTime();
+        if (inUse.isEmpty() || !Files.isRegularFile(releaseFile)) return false;
+        try (BufferedReader text = Files.newBufferedReader(releaseFile, StandardCharsets.UTF_8)) {
+            Properties record = new Properties();
+            record.load(text);
+            return Instant.parse(record.getProperty("built")).equals(inUse.get())
+                    && !Instant.parse(record.getProperty("released")).isBefore(released);
+        } catch (IOException | RuntimeException ex) {
+            return false;
+        }
     }
 
     /** Sends to MaxMind with credentials, then follows one redirect without them. */
@@ -141,11 +163,12 @@ public final class MaxMindUpdater {
         }
     }
 
-    /** Opens the new file once, and checks it is the configured edition. */
-    private void check(Path candidate) throws IOException {
+    /** Opens the new file once, checks it is the configured edition, and returns its build date. */
+    private Instant check(Path candidate) throws IOException {
         try (Reader reader = new Reader(candidate.toFile(), Reader.FileMode.MEMORY)) {
             String type = reader.getMetadata().databaseType();
             if (!edition.equals(type)) throw new IOException("MaxMind sent a " + type + " file instead of " + edition);
+            return reader.getMetadata().buildTime();
         } catch (RuntimeException ex) {
             throw new IOException("The downloaded MaxMind file cannot be read: " + Text.message(ex), ex);
         }
