@@ -121,10 +121,12 @@ class LookupServiceTest {
         provider.gate = new CountDownLatch(1);
         CompletableFuture<Result> normal = service.lookup(IP, false);
         CompletableFuture<Result> refresh = service.lookup(IP, true);
+        // Both must reach the provider before either finishes; otherwise the normal lookup could read the saved refresh.
+        for (int i = 0; i < 500 && provider.calls.get() < 2; i++) Thread.sleep(10);
+        assertEquals(2, provider.calls.get(), "the refresh must make its own request");
         provider.gate.countDown();
         normal.get(10, TimeUnit.SECONDS);
         assertEquals(Source.PROVIDER, refresh.get(10, TimeUnit.SECONDS).source());
-        assertEquals(2, provider.calls.get());
     }
 
     @Test void storageComesBeforeTheProvider() throws Exception {
