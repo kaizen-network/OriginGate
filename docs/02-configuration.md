@@ -56,6 +56,8 @@ rules:
     bypass-permissions: ["origingate.bypass.country"]
 ```
 
+The examples below show only the settings that change. Each provider block needs all of its settings, so if your `config.yml` is from before these settings existed, copy the `iphub`, `ip-api`, `ipinfo`, and `maxmind` blocks from the bundled `config.yml` first.
+
 ### Example: country from MaxMind, VPN check from proxycheck.io
 
 ```yaml

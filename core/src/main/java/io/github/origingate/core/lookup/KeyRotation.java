@@ -10,9 +10,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Uses keys in turn. A refused key is skipped for {@link ProviderChain#REFUSED_PAUSE} and followed by one try with
- * the next key. {@link KeyRejectedException} is thrown only when every key has been refused, so the chain pauses the
- * provider only then. With no keys, one request is sent without a key.
+ * Uses keys in turn. A refused key is skipped for {@link ProviderChain#REFUSED_PAUSE}, and the next key that is not
+ * skipped is tried, until one answers. {@link KeyRejectedException} is thrown only when every key has been refused,
+ * so the chain pauses the provider only then. With no keys, one request is sent without a key.
  */
 final class KeyRotation {
     interface Request {
@@ -35,25 +35,23 @@ final class KeyRotation {
 
     IpInfo lookup(Request request) throws LookupException {
         if (keys.isEmpty()) return request.send(null);
-        int first = usable(Math.floorMod(next.getAndIncrement(), keys.size()));
-        if (first < 0) throw new KeyRejectedException("all " + keys.size() + " API keys were refused in the last minute");
-        try {
-            return request.send(keys.get(first));
-        } catch (KeyRejectedException ex) {
-            refuse(first);
-            int second = usable((first + 1) % keys.size());
-            if (second < 0) throw ex;
-            log.warn(label + " refused API key " + (first + 1) + " (" + ex.getMessage() + "), trying key " + (second + 1), null);
+        int index = usable(Math.floorMod(next.getAndIncrement(), keys.size()));
+        if (index < 0) throw new KeyRejectedException("all " + keys.size() + " API keys were refused in the last minute");
+        KeyRejectedException last = null;
+        // Each refusal skips that key, so this sends at most one request per key.
+        for (int tries = 0; tries < keys.size() && index >= 0; tries++) {
             try {
-                return request.send(keys.get(second));
-            } catch (KeyRejectedException again) {
-                refuse(second);
-                if (usable(second) < 0) throw again;
-                // Other keys still work, so this is a failed lookup, not a reason to pause the provider.
-                throw new LookupException(label + " refused API keys " + (first + 1) + " and " + (second + 1) + ": "
-                        + again.getMessage());
+                return request.send(keys.get(index));
+            } catch (KeyRejectedException ex) {
+                refuse(index);
+                last = ex;
+                int following = usable((index + 1) % keys.size());
+                log.warn(label + " refused API key " + (index + 1) + " (" + ex.getMessage() + "), "
+                        + (following < 0 ? "no other key is left" : "trying key " + (following + 1)), null);
+                index = following;
             }
         }
+        throw last;
     }
 
     /** The first key from {@code start} on that is not paused, or -1 when all are. */

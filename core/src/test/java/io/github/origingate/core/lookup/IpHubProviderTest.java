@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,14 +38,22 @@ class IpHubProviderTest {
 
     /** Answers the hosting fixture, or the status set for the key in the X-Key header. */
     private IpHubProvider provider(List<String> keys, Map<String, Integer> keyStatus) throws IOException {
+        return provider(keys, keyStatus, Clock.fixed(TestSupport.NOW, ZoneOffset.UTC));
+    }
+
+    private IpHubProvider provider(List<String> keys, Map<String, Integer> keyStatus, Clock clock) throws IOException {
         String body = read("hosting-8.8.8.8.json");
         server = new TestServer(request -> {
             String key = request.headers().getFirst("X-Key");
             int status = key == null ? 200 : keyStatus.getOrDefault(key, 200);
             return Reply.text(status, status == 200 ? body : "{}");
         });
-        return new IpHubProvider(HttpClient.newHttpClient(), server.uri("/ip/"), keys, Duration.ofSeconds(3),
-                Clock.fixed(TestSupport.NOW, ZoneOffset.UTC), Log.NONE, "OriginGate/test");
+        return new IpHubProvider(HttpClient.newHttpClient(), server.uri("/ip/"), keys, Duration.ofSeconds(3), clock,
+                Log.NONE, "OriginGate/test");
+    }
+
+    private List<String> keysSent() {
+        return server.requests.stream().map(request -> request.headers().getFirst("X-Key")).toList();
     }
 
     @Test void blockOneIsAVpn() throws Exception {
@@ -98,14 +107,26 @@ class IpHubProviderTest {
         assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8"));
     }
 
-    @Test void refusedKeysAreSkippedWhileOtherKeysWork() throws Exception {
+    @Test void refusedKeysAreSkippedUntilAWorkingKeyAnswers() throws Exception {
         IpHubProvider provider = provider(List.of("key-one", "key-two", "key-three"), Map.of("key-one", 429, "key-two", 429));
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
-        assertFalse(failure instanceof KeyRejectedException, "a working key is left, so the provider is not paused");
         assertTrue(provider.lookup("8.8.8.8").vpn());
         assertTrue(provider.lookup("8.8.8.8").vpn());
-        assertEquals(List.of("key-one", "key-two", "key-three", "key-three"),
-                server.requests.stream().map(request -> request.headers().getFirst("X-Key")).toList());
+        assertEquals(List.of("key-one", "key-two", "key-three", "key-three"), keysSent());
+    }
+
+    @Test void refusedKeyIsUsedAgainAfterAMinute() throws Exception {
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        Map<String, Integer> keyStatus = new ConcurrentHashMap<>(Map.of("key-one", 429));
+        IpHubProvider provider = provider(List.of("key-one", "key-two"), keyStatus, clock);
+        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8");
+        assertEquals(List.of("key-one", "key-two", "key-two", "key-two"), keysSent());
+        keyStatus.clear();
+        clock.advance(ProviderChain.REFUSED_PAUSE.plusSeconds(1));
+        provider.lookup("8.8.8.8");
+        provider.lookup("8.8.8.8");
+        assertEquals(List.of("key-two", "key-one"), keysSent().subList(4, 6));
     }
 
     @Test void serverErrorIsAPlainFailure() throws Exception {

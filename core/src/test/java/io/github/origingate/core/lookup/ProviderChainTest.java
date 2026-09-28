@@ -122,6 +122,15 @@ class ProviderChainTest {
         assertEquals(2, refusing.calls.get());
     }
 
+    @Test void plainFailureDoesNotPauseTheProvider() throws Exception {
+        FakeProvider flaky = new FakeProvider("proxycheck").fail(IP, new LookupException("HTTP 500"));
+        FakeProvider backup = new FakeProvider("maxmind").answer(countryOnly("GB"));
+        ProviderChain chain = chain(List.of(flaky, backup), List.of());
+        chain.lookup(IP);
+        chain.lookup(IP);
+        assertEquals(2, flaky.calls.get());
+    }
+
     @Test void noNewProviderIsAskedAfterTheTimeBudget() {
         FakeProvider slow = new FakeProvider("slow").fail(IP, new LookupException("timed out"));
         slow.onLookup = () -> clock.advance(Duration.ofSeconds(6));

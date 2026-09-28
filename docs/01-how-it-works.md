@@ -48,7 +48,7 @@ When no provider returns a country code, the lookup counts as failed and is not 
 A lookup has two jobs:
 
 - Country: the providers in `country-from` are asked in order until one returns a known country code.
-- VPN check: the providers in `vpn-from` are asked in order until one answers. A provider that already answered in the same lookup is not asked again.
+- VPN check: the providers in `vpn-from` are asked in order until one answers. A provider that already answered or failed in the same lookup is not asked again.
 
 The result takes the country, region, and city from the country answer, and the VPN and proxy flags, type, and operator from the VPN answer. The network provider, organisation, and ASN come from the VPN answer, or from the country answer when the VPN answer has none.
 
@@ -92,7 +92,7 @@ OriginGate uses the v3 API (`https://proxycheck.io/v3/<ip>?key=<key>`). v3 retur
 | vpn, proxy | `detections.vpn`, `detections.proxy` |
 | operator name | `operator.name` (`operator` is `null` when unknown) |
 
-Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), the next key is tried once, then the lookup fails. A refused key is skipped for 60 seconds, so later lookups use the keys that still work. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
+Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, or `"status": "denied"`), that key is skipped for 60 seconds and the next key is tried, until one works. When every key is refused, the next provider in the list is asked, or the lookup fails when there is none. Other errors are not retried. An unknown or wrong key is not refused by the API: it answered `"status": "ok"` in a test on 2026-09-26, so check your usage on the proxycheck.io dashboard.
 
 ## Failures and dry-run
 

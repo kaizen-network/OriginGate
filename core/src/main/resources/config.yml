@@ -34,7 +34,7 @@ lookup:
     # proxycheck.io v3 API. Change only for testing.
     base-url: "https://proxycheck.io/v3/"
     # Your proxycheck.io API keys, used in turn. Leave empty to use proxycheck.io without a key (100 lookups per day).
-    # When a key is rejected or rate-limited, the next key is tried once, and the refused key is skipped for 60 seconds.
+    # When a key is rejected or rate-limited, it is skipped for 60 seconds and the next key is tried.
     api-keys: []
     # Longest time for one API request, in milliseconds (500-20000).
     request-timeout-millis: 3500

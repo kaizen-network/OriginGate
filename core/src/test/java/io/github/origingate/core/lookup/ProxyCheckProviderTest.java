@@ -169,15 +169,12 @@ class ProxyCheckProviderTest {
         assertEquals(2, requests.size());
     }
 
-    @Test void secondRefusalFailsWithoutFurtherTries() throws Exception {
+    @Test void refusedKeysAreFollowedByTheNextWorkingKey() throws Exception {
         keyStatus.put("key-one", 401);
         keyStatus.put("key-two", 403);
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
-        LookupException failure = assertThrows(LookupException.class, () -> provider.lookup("8.8.8.8"));
-        assertFalse(failure instanceof KeyRejectedException, "key-three is still unused");
-        assertEquals(2, requests.size());
         assertEquals("Google LLC", provider.lookup("8.8.8.8").provider());
-        assertEquals("/v3/8.8.8.8?key=key-three", requests.get(2));
+        assertEquals(List.of("/v3/8.8.8.8?key=key-one", "/v3/8.8.8.8?key=key-two", "/v3/8.8.8.8?key=key-three"), requests);
     }
 
     @Test void allKeysRefusedIsAKeyRejection() throws Exception {
