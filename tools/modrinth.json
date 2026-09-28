@@ -1,0 +1,12 @@
+{
+  "project": "origingate",
+  "files": [
+    {
+      "pattern": "OriginGate-Velocity-{version}.jar",
+      "label": "Velocity",
+      "loaders": ["velocity"],
+      "min_game_version": "1.7.2",
+      "dependencies": []
+    }
+  ]
+}
