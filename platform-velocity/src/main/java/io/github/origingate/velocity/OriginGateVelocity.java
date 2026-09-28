@@ -210,6 +210,7 @@ public final class OriginGateVelocity {
     private void logStarted(String prefix) {
         var config = runtime.config();
         logger.info("{} with {} storage{}.", prefix, config.storage().type(), config.dryRun() ? " in DRY-RUN mode (nobody is kicked)" : "");
+        logger.info("Lookups: {}.", runtime.lookupSummary());
         if (config.lookup().uses("proxycheck") && config.lookup().proxycheck().apiKeys().isEmpty()) {
             logger.warn("No proxycheck.io API keys are set; proxycheck.io allows 100 lookups per day without a key.");
         }

@@ -6,8 +6,7 @@ import io.github.origingate.core.config.Messages;
 import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.lookup.MemoryCache;
-import io.github.origingate.core.lookup.ProviderChain;
-import io.github.origingate.core.lookup.ProxyCheckProvider;
+import io.github.origingate.core.lookup.Providers;
 import io.github.origingate.core.report.DecisionFile;
 import io.github.origingate.core.rules.Gate;
 import io.github.origingate.core.storage.IpStorage;
@@ -21,7 +20,6 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -38,17 +36,20 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final Messages messages;
     private final IpStorage storage;
     private final HttpClient http;
+    private final Providers providers;
     private final ThreadPoolExecutor workers;
     private final Gate gate;
     private final DecisionFile decisionFile;
     private final Clock clock;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpClient http,
-                              ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile, Clock clock) {
+                              Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
+                              Clock clock) {
         this.config = config;
         this.messages = messages;
         this.storage = storage;
         this.http = http;
+        this.providers = providers;
         this.workers = workers;
         this.gate = gate;
         this.decisionFile = decisionFile;
@@ -81,23 +82,19 @@ public final class OriginGateRuntime implements AutoCloseable {
             log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
                     + "and sets up the table once the database answers.", null);
         }
-        Duration requestTimeout = Duration.ofMillis(config.lookup().proxycheck().requestTimeoutMillis());
         HttpClient http = HttpClient.newBuilder()
-                .connectTimeout(requestTimeout)
+                .connectTimeout(Duration.ofMillis(config.lookup().waitMillis()))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         ThreadPoolExecutor workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(QUEUE), threads(), new ThreadPoolExecutor.AbortPolicy());
         workers.allowCoreThreadTimeOut(true);
         Duration maxAge = Duration.ofDays(settings.maxAgeDays());
-        ProxyCheckProvider provider = new ProxyCheckProvider(http, config.lookup().proxycheck().baseUrl(), config.lookup().proxycheck().apiKeys(),
-                requestTimeout, clock, log, "OriginGate/" + VERSION);
-        ProviderChain chain = new ProviderChain(List.of(provider), List.of(provider),
-                Duration.ofMillis(config.lookup().waitMillis()), clock, log);
-        LookupService lookups = new LookupService(chain, storage, new MemoryCache(settings.memoryCacheSize(), maxAge, clock),
-                maxAge, workers, clock, log);
+        Providers providers = Providers.start(config.lookup(), http, clock, log, "OriginGate/" + VERSION);
+        LookupService lookups = new LookupService(providers.chain(), storage,
+                new MemoryCache(settings.memoryCacheSize(), maxAge, clock), maxAge, workers, clock, log);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
-        return new OriginGateRuntime(config, messages, storage, http, workers, new Gate(config, lookups, log),
+        return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log),
                 decisionFile, clock);
     }
 
@@ -145,6 +142,9 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     public Gate gate() { return gate; }
 
+    /** For the startup line, for example "country from maxmind, proxycheck | vpn from proxycheck". */
+    public String lookupSummary() { return providers.chain().describe(); }
+
     /** Null when {@code log-file: false}. */
     public DecisionFile decisionFile() { return decisionFile; }
 
@@ -153,6 +153,7 @@ public final class OriginGateRuntime implements AutoCloseable {
      * (up to {@code wait-millis} plus two requests), then closes it in the background.
      */
     public void retire() {
+        providers.stopUpdates();
         long graceMillis = config.lookup().waitMillis() + 2L * config.lookup().longestRequestMillis();
         Thread closer = new Thread(() -> {
             try {
@@ -175,6 +176,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
         }
+        providers.close();
         http.shutdown();
         storage.close();
     }
