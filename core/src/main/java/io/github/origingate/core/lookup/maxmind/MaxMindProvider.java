@@ -66,6 +66,12 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
         return current == null ? Optional.empty() : Optional.of(current.getMetadata().buildTime());
     }
 
+    /** The edition of the file in use from its metadata, for example "GeoLite2-City", or empty when none is loaded. */
+    public Optional<String> databaseType() {
+        Reader current = reader.get();
+        return current == null ? Optional.empty() : Optional.of(current.getMetadata().databaseType());
+    }
+
     /** A warning when the file in use is older than {@link #STALE_AFTER}, for owners who update it themselves. */
     public Optional<String> staleWarning() {
         if (buildTime().isEmpty()) return Optional.empty();

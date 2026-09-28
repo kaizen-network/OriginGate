@@ -74,7 +74,7 @@ class MaxMindUpdaterTest {
     /** Like MaxMind: the permalink checks Basic auth and redirects to a storage host that must not get the credentials. */
     private Reply answer(Request request) {
         String path = request.uri().getPath();
-        if (path.equals("/geoip/databases/GeoLite2-Country/download")) {
+        if (path.equals("/geoip/databases/GeoLite2-Country/download") || path.equals("/geoip/databases/GeoLite2-City/download")) {
             if (!AUTH.equals(request.headers().getFirst("Authorization"))) return Reply.text(401, "");
             if (status != 200) return Reply.text(status, "");
             return new Reply(302, new byte[0], Map.of("Location", "/bucket/GeoLite2-Country.tar.gz?signature=test"));
@@ -89,8 +89,12 @@ class MaxMindUpdaterTest {
     }
 
     private MaxMindUpdater updater(String licenseKey) {
+        return updater("GeoLite2-Country", licenseKey);
+    }
+
+    private MaxMindUpdater updater(String edition, String licenseKey) {
         return new MaxMindUpdater(HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
-                server.uri("/geoip/databases/"), "GeoLite2-Country", 123456, licenseKey, provider, file(), Log.NONE,
+                server.uri("/geoip/databases/"), edition, 123456, licenseKey, provider, file(), Log.NONE,
                 "OriginGate/test");
     }
 
@@ -125,6 +129,15 @@ class MaxMindUpdaterTest {
         updater.update();
         assertEquals(MaxMindUpdater.Outcome.UP_TO_DATE, updater.update());
         assertEquals(1, downloads.get());
+    }
+
+    @Test void editionChangeIsDownloadedRightAway() throws Exception {
+        updater("test-key").update();
+        // Only lookup.maxmind.edition changed; the file path still holds the Country file and its release record.
+        archive = archive("GeoLite2-City-Test.mmdb");
+        assertEquals(MaxMindUpdater.Outcome.DOWNLOADED, updater("GeoLite2-City", "test-key").update());
+        assertEquals("London", provider.lookup("81.2.69.160", TestSupport.NO_DEADLINE).city());
+        assertEquals(2, downloads.get());
     }
 
     @Test void newerReleaseReplacesTheFile() throws Exception {

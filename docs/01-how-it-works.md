@@ -77,7 +77,7 @@ Only proxycheck.io reports proxies separately from VPNs. The others set only the
 
 ### MaxMind file
 
-`lookup.maxmind.file` is read into memory at startup and reload. With `account-id` and `license-key` set, OriginGate downloads the file when it is missing and checks for a new release every 24 hours with a HEAD request (MaxMind states these do not count toward the download limit). A new file is saved next to the old one, checked, then moved over it, and used without a reload. The release and the file's build date are recorded in `<file>.release` next to it, and a file OriginGate did not download itself (placed or restored by hand) is replaced with the latest release. MaxMind redirects downloads to its storage host; the account ID and license key are sent only to `download.maxmind.com`.
+`lookup.maxmind.file` is read into memory at startup and reload. With `account-id` and `license-key` set, OriginGate downloads the file when it is missing and checks for a new release every 24 hours with a HEAD request (MaxMind states these do not count toward the download limit). A new file is saved next to the old one, checked, then moved over it, and used without a reload. The release and the file's build date are recorded in `<file>.release` next to it, and a file OriginGate did not download itself (placed or restored by hand), or a file of another edition after `edition` changes, is replaced with the latest release. MaxMind redirects downloads to its storage host; the account ID and license key are sent only to `download.maxmind.com`.
 
 Without a key, you place the file yourself. When it is older than 30 days, a warning is logged at startup and reload, since MaxMind's GeoLite EULA asks for updates within 30 days of a new release.
 

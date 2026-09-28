@@ -100,12 +100,14 @@ public final class MaxMindUpdater {
     }
 
     /**
-     * True when {@code <file>.release} records {@code released} or a later release, and its build date matches the
-     * file in use. Anything else (no record, a file placed or restored by hand, a file that did not load) is not trusted.
+     * True when the file in use is the configured edition, and {@code <file>.release} records {@code released} or a
+     * later release with the same build date as that file. Anything else (another edition, no record, a file placed or
+     * restored by hand, a file that did not load) is not trusted.
      */
     private boolean isCurrent(Instant released) {
         Optional<Instant> inUse = provider.buildTime();
         if (inUse.isEmpty() || !Files.isRegularFile(releaseFile)) return false;
+        if (!provider.databaseType().map(edition::equals).orElse(false)) return false;
         try (BufferedReader text = Files.newBufferedReader(releaseFile, StandardCharsets.UTF_8)) {
             Properties record = new Properties();
             record.load(text);
