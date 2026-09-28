@@ -19,6 +19,15 @@
 
 `platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes) and that placeholders render as plain text.
 
+## Docs check
+
+```powershell
+python tools/check_docs.py
+python -m unittest discover -s tools -p "test_*.py"
+```
+
+`check_docs.py` checks the pages the website renders: front matter (`title`, `description`, `order`) on every page outside `contributing/`, relative links, images, and `#anchors` that resolve, and the changelog heading format. CI runs both.
+
 ## Remote database test
 
 Opt-in, never part of `build`. Use a dedicated, disposable database whose name starts with `origingate_test_`; the test drops and creates tables in it.

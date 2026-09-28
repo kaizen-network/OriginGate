@@ -35,7 +35,7 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 
 ## GitHub Actions
 
-`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs: Ubuntu 24.04, Temurin JDK 25, a syntax check of the probe script, then `build` and `probeJar`. It keeps the plugin JAR for 14 days and test reports for 7. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. The loopback probe needs a Velocity JAR, so it is not part of CI.
+`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs: Ubuntu 24.04, Temurin JDK 25, a syntax check of the probe script, the docs check and its tests, then `build` and `probeJar`. It keeps the plugin JAR for 14 days and test reports for 7. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. The loopback probe needs a Velocity JAR, so it is not part of CI.
 
 ## Releasing
 
