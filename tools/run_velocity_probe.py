@@ -1,6 +1,6 @@
 """Loopback-only probe: runs the built plugin on a real local Velocity with a stub lookup provider.
 
-Needs a prepared .run/velocity (see docs/04-development.md), Java on PATH, and Python 3.11+.
+Needs a prepared .run/velocity (see docs/contributing/testing.md), Java on PATH, and Python 3.11+.
 Build first: gradlew build :platform-velocity:probeJar
 With --consentgate and --packetevents, ConsentGate is installed too and the compatibility checks run.
 No real account, real API, or real database is used.

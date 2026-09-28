@@ -1,3 +1,9 @@
+---
+title: Storage and privacy
+description: Where lookups are saved, MySQL/MariaDB setup, what is sent to providers, and how long data is kept.
+order: 9
+---
+
 # Storage and privacy
 
 ## Table
@@ -14,7 +20,7 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 | `type` | `VARCHAR(64)` | Network type (proxycheck.io only) |
 | `checked_at` | `BIGINT` | Unix seconds, indexed |
 
-Every query uses prepared statements. Saves use `REPLACE INTO`, an atomic upsert in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
+Saves replace the previous row for the same IP in one step, in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
 
 ## SQLite
 
@@ -40,9 +46,9 @@ storage:
     socket-timeout-millis: 5000
 ```
 
-The driver is MariaDB Connector/J, bundled and relocated. It opens one connection per operation; the 4 lookup workers limit how many run at once.
+The password is used as written; environment variables are not expanded. The driver (MariaDB Connector/J) is bundled. It opens one connection per operation, and the 4 lookup workers limit how many run at once.
 
-If the database cannot be reached when OriginGate starts or reloads, OriginGate still starts, logs a warning, and checks connections without saved lookups. The table is created as soon as the database answers. A database that answers but refuses the setup (for example missing permissions) stops the load instead, since that needs a config fix.
+If the database cannot be reached when OriginGate starts or reloads, OriginGate still starts, logs a warning, and checks connections without saved lookups. The table is created as soon as the database answers. A database that answers but refuses the setup (for example, missing permissions) stops the load instead, since that needs a config fix.
 
 While the database is down, each failed attempt makes OriginGate skip storage for 60 seconds, so logins are not slowed down by connection timeouts.
 
@@ -50,7 +56,8 @@ While the database is down, each failed attempt makes OriginGate skip storage fo
 
 IP addresses and their lookup data are personal data.
 
-- Each provider in `country-from` and `vpn-from` receives the player's IP address and its key or token when it is asked. The free ip-api.com service receives them over plain HTTP. MaxMind receives only your account ID and license key, when the file is downloaded, never player IPs. Nothing is sent anywhere else.
-- Stored lookups older than `keep-days` are deleted every hour (first run one minute after start). Daily log files older than `log-file-keep-days` are deleted at the same time. A value of `0` turns off that deletion. Each IP has one row holding its latest lookup, so a new lookup replaces the old one.
+- Each provider in `country-from` and `vpn-from` receives the player's IP address and your key or token when it is asked. The free ip-api.com service receives them over plain HTTP. MaxMind receives only your account ID and license key when the file is downloaded, never player IPs. Nothing is sent anywhere else.
+- Stored lookups older than `keep-days` are deleted every hour (first run one minute after start). Daily log files older than `log-file-keep-days` are deleted at the same time. A value of `0` turns off that deletion.
+- Each IP has one row holding its latest lookup, so a new lookup replaces the old one.
 - `origingate cache clear <ip|all>` deletes lookups from memory and from OriginGate's table right away.
 - The console lines and log files contain IP addresses. Velocity's own proxy log is separate and follows its own settings.
