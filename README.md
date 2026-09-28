@@ -1,3 +1,5 @@
+![OriginGate: VPN, proxy, and country checks at login for Velocity](docs/images/banner.webp)
+
 # OriginGate
 
 OriginGate is a Velocity plugin that checks where each player connects from. It can kick players who use a VPN or proxy, or who connect from a country you do not allow. The check runs during login, so a kicked player never reaches your backend servers.
