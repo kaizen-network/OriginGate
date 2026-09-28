@@ -23,6 +23,8 @@ OriginGate is a Velocity plugin that checks where each player connects from. It 
 
 ## Documentation
 
+Read the docs on the web at [kaizenmc.id/software/origingate](https://kaizenmc.id/software/origingate), or here on GitHub:
+
 - [Overview](docs/index.md)
 - [Installation](docs/installation.md)
 - [Rollout checklist](docs/rollout.md)
