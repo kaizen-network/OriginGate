@@ -17,4 +17,4 @@ Velocity, Gson, Adventure (including MiniMessage), and SLF4J are supplied by the
 
 ## Data sent to third parties
 
-OriginGate sends each checked player's IP address, and the configured API key, to the lookup provider (proxycheck.io by default, set by `lookup.proxycheck.base-url`). Nothing else is sent anywhere.
+OriginGate sends each checked player's IP address, and that provider's key or token, to the lookup providers listed in `lookup.country-from` and `lookup.vpn-from`: proxycheck.io (by default, at `lookup.proxycheck.base-url`), IPHub, ip-api.com, or IPinfo. Only listed providers are contacted. When `lookup.maxmind.account-id` and `license-key` are set, those two values are sent to MaxMind to download the GeoLite2 file; no player data is sent to MaxMind. The GeoLite2 data is not bundled; it is downloaded under MaxMind's GeoLite End User License Agreement. Nothing else is sent anywhere.

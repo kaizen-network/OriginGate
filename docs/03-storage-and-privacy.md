@@ -11,7 +11,7 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 | `country_code` | `CHAR(2)` | |
 | `asn` | `VARCHAR(32)` | |
 | `vpn`, `proxy` | `BOOLEAN` | |
-| `type` | `VARCHAR(64)` | proxycheck.io network type |
+| `type` | `VARCHAR(64)` | Network type (proxycheck.io only) |
 | `checked_at` | `BIGINT` | Unix seconds, indexed |
 
 Every query uses prepared statements. Saves use `REPLACE INTO`, an atomic upsert in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
@@ -50,7 +50,7 @@ While the database is down, each failed attempt makes OriginGate skip storage fo
 
 IP addresses and their lookup data are personal data.
 
-- The lookup provider receives the player's IP address and your API key. Nothing is sent anywhere else.
+- Each provider in `country-from` and `vpn-from` receives the player's IP address and its key or token when it is asked. The free ip-api.com service receives them over plain HTTP. MaxMind receives only your account ID and license key, when the file is downloaded, never player IPs. Nothing is sent anywhere else.
 - Stored lookups older than `keep-days` are deleted every hour (first run one minute after start). Daily log files older than `log-file-keep-days` are deleted at the same time. A value of `0` turns off that deletion. Each IP has one row holding its latest lookup, so a new lookup replaces the old one.
 - `origingate cache clear <ip|all>` deletes lookups from memory and from OriginGate's table right away.
 - The console lines and log files contain IP addresses. Velocity's own proxy log is separate and follows its own settings.

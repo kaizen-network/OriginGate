@@ -33,15 +33,53 @@ A `bypass.addresses` entry wins over a `deny-addresses` entry.
 
 1. Memory cache (bounded, least recently used entries are dropped first).
 2. OriginGate's table, rows younger than `max-age-days`.
-3. proxycheck.io.
+3. The lookup providers (see [Providers](#providers)).
 
 Only one request per IP runs at a time. Other logins from the same IP wait for that request. `origingate check <ip> refresh` always makes its own request. Lookups run on 4 worker threads with a queue of 256. When the queue is full, the lookup fails and `on-lookup-failure` applies.
 
 A new result is given to the waiting login first and saved afterwards with an upsert, so a slow database does not hold the login.
 
-When a storage read or save fails, storage is skipped for 60 seconds and lookups go straight to proxycheck.io. This keeps a dead database from using up `wait-millis` on every login.
+When a storage read or save fails, storage is skipped for 60 seconds and lookups go straight to the providers. This keeps a dead database from using up `wait-millis` on every login.
 
-A result without a country code is treated as a failed lookup and is not saved, since country rules need it. That IP is not asked again for 5 minutes, so a player reconnecting in a loop cannot drain the API quota. `refresh` and `cache clear` skip this pause.
+When no provider returns a country code, the lookup counts as failed and is not saved, since country rules need it. That IP is not asked again for 5 minutes, so a player reconnecting in a loop cannot drain the API quota. `refresh` and `cache clear` skip this pause.
+
+### Providers
+
+A lookup has two jobs:
+
+- Country: the providers in `country-from` are asked in order until one returns a known country code.
+- VPN check: the providers in `vpn-from` are asked in order until one answers. A provider that already answered in the same lookup is not asked again.
+
+The result takes the country, region, and city from the country answer, and the VPN and proxy flags, type, and operator from the VPN answer. The network provider, organisation, and ASN come from the VPN answer, or from the country answer when the VPN answer has none.
+
+The next provider is asked when one fails, times out, refuses its key, is rate-limited, or has no data. When either job gets no answer, the lookup fails and `on-lookup-failure` applies. No new provider is asked once `wait-millis` has passed. A provider that refuses its key or is rate-limited is skipped for 60 seconds.
+
+With `vpn-from: []` there is no VPN check, and the `vpn` and `proxy` rules must be disabled.
+
+| Provider | Kind | Country | VPN check | Free tier (checked 2026-09-27) |
+| --- | --- | --- | --- | --- |
+| `proxycheck` | Web API | Yes | Yes | 100 lookups per day without a key, 1,000 with a free account |
+| `iphub` | Web API | Yes | Yes | 1,000 requests per day, key required |
+| `ip-api` | Web API | Yes | Yes | 45 requests per minute, plain HTTP, no commercial use |
+| `ipinfo` | Web API | Yes | No | Lite plan without a limit, token required |
+| `maxmind` | Local file | Yes | No | Free account and license key |
+
+Fields used:
+
+| Provider | Country fields | VPN | Network fields |
+| --- | --- | --- | --- |
+| IPHub (`https://v2.api.iphub.info/ip/<ip>`, key in `X-Key`) | `countryCode`, `countryName` | `block: 1` (non-residential). `block: 2` is ignored, since IPHub says it may flag innocent users | `isp`, `asn` |
+| ip-api (`http://ip-api.com/json/<ip>`, or `https://pro.ip-api.com/json/<ip>?key=` with a key) | `countryCode`, `country`, `regionName`, `city` | `proxy: true` (proxy, VPN, or Tor exit) | `isp`, `org`, `as` |
+| IPinfo Lite (`https://api.ipinfo.io/lite/<ip>?token=`) | `country_code`, `country` | | `asn`, `as_name` |
+| MaxMind (local `.mmdb` file) | `country` (or `registered_country`), first subdivision and city in a City file | | |
+
+Only proxycheck.io reports proxies separately from VPNs. The others set only the VPN flag.
+
+### MaxMind file
+
+`lookup.maxmind.file` is read into memory at startup and reload. With `account-id` and `license-key` set, OriginGate downloads the file when it is missing and checks for a new release every 24 hours with a HEAD request (MaxMind states these do not count toward the download limit). A new file is saved next to the old one, checked, then moved over it, and used without a reload. MaxMind redirects downloads to its storage host; the account ID and license key are sent only to `download.maxmind.com`.
+
+Without a key, you place the file yourself. When it is older than 30 days, a warning is logged at startup and reload, since MaxMind's GeoLite EULA asks for updates within 30 days of a new release.
 
 ### proxycheck.io
 
@@ -65,7 +103,7 @@ Keys are used in turn. When proxycheck.io refuses a key (HTTP 401, 403, or 429, 
 
 ## Logging
 
-Each decision is one line, for example `DENY rule=vpn player=Alex uuid=... ip=... provider="..." organisation="..." country="..." country_code=.. city="..." type="..." vpn=yes proxy=no source=provider note="flagged as VPN"`. Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`.
+Each decision is one line, for example `DENY rule=vpn player=Alex uuid=... ip=... provider="..." organisation="..." country="..." country_code=.. city="..." type="..." vpn=yes proxy=no source=proxycheck note="flagged as VPN"`. Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`. `source` is `memory`, `storage`, or the providers that answered, such as `maxmind+proxycheck`.
 
 `console-log` sets which lines reach the console. Each level includes the ones before it:
 

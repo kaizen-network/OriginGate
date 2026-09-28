@@ -2,14 +2,14 @@
 
 OriginGate is a Velocity plugin that checks where each player connects from. It can kick players who use a VPN or proxy, or who connect from a country you do not allow. The check runs during login, so a kicked player never reaches your backend servers.
 
-- IP data comes from [proxycheck.io](https://proxycheck.io/) and is saved (SQLite, or MySQL/MariaDB), so each IP is looked up at most once every 30 days by default.
+- IP data comes from proxycheck.io, IPHub, ip-api.com, IPinfo, or a local MaxMind GeoLite2 file (you choose, and can combine them), and is saved (SQLite, or MySQL/MariaDB), so each IP is looked up at most once every 30 days by default.
 - Every rule is optional and has its own bypass permissions.
 - Dry-run mode shows what would happen without kicking anyone.
 
 ## Requirements
 
 - Velocity 3.4.0 or newer, on Java 21 or newer.
-- A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day. A free account raises that to 1,000.
+- A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day. A free account raises that to 1,000. Other providers are optional; see [configuration](docs/02-configuration.md).
 
 ## Install
 
@@ -34,7 +34,7 @@ First, without looking anything up:
 2. **deny-addresses** rule: IP addresses or ranges you list are kicked.
 3. **Private addresses** (LAN, localhost) are let in, since there is nothing to look up.
 
-Then the IP is looked up (from memory, from storage, or from proxycheck.io), and the rules are checked in this order:
+Then the IP is looked up (from memory, from storage, or from the lookup providers), and the rules are checked in this order:
 
 4. **vpn** rule: the IP belongs to a VPN.
 5. **proxy** rule: the IP is a proxy, from a country not in `allowed-countries`.
@@ -51,7 +51,7 @@ Use them in game with `/`, or in the console without it.
 | Command | What it does | Permission |
 | --- | --- | --- |
 | `origingate check <player\|ip>` | Shows the IP data and which rule would apply | `origingate.command.check` |
-| `origingate check <player\|ip> refresh` | Same, but asks proxycheck.io again | `origingate.command.check` |
+| `origingate check <player\|ip> refresh` | Same, but asks the lookup providers again | `origingate.command.check` |
 | `origingate reload` | Reloads `config.yml` and `messages.yml`. A file with a mistake is refused and the current settings stay | `origingate.command.reload` |
 | `origingate cache clear <ip\|all>` | Forgets saved lookups, so the next join looks the IP up again | `origingate.command.cache` |
 

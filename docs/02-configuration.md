@@ -13,9 +13,17 @@ Updates keep your files. New settings are not added automatically; compare with 
 | `lookup.skip-private-addresses` | `true` | No lookup for loopback, LAN, link-local, and unique local addresses |
 | `lookup.on-lookup-failure` | `allow` | `allow` or `deny` |
 | `lookup.wait-millis` | `5000` | 1000 to 20000. Longest time a login is held |
+| `lookup.country-from` | `[proxycheck]` | Providers asked for the country, in order. See [providers](01-how-it-works.md#providers) |
+| `lookup.vpn-from` | `[proxycheck]` | Providers asked for the VPN check, in order: `proxycheck`, `iphub`, `ip-api`. `[]` for none, then the `vpn` and `proxy` rules must be off |
 | `lookup.proxycheck.base-url` | `https://proxycheck.io/v3/` | Change only for testing |
 | `lookup.proxycheck.api-keys` | `[]` | Up to 32 keys, used in turn |
-| `lookup.proxycheck.request-timeout-millis` | `3500` | 500 to 20000, per request |
+| `lookup.iphub.api-keys` | `[]` | Up to 32 keys, used in turn. At least one when IPHub is listed |
+| `lookup.ip-api.api-key` | `""` | Pro key. Empty uses the free service (plain HTTP, no commercial use) |
+| `lookup.ipinfo.token` | `""` | Needed when IPinfo is listed |
+| `lookup.*.request-timeout-millis` | `3500` | 500 to 20000, per request, for each web provider |
+| `lookup.maxmind.file` | `data/GeoLite2-Country.mmdb` | Inside the plugin folder |
+| `lookup.maxmind.edition` | `GeoLite2-Country` | `GeoLite2-Country` or `GeoLite2-City`, for downloads |
+| `lookup.maxmind.account-id`, `license-key` | `0`, `""` | Both set: download and update the file automatically. Both empty: place the file yourself |
 | `storage.type` | `sqlite` | `sqlite` or `mysql` (also MariaDB) |
 | `storage.max-age-days` | `30` | 1 to 365. Lookups older than this are looked up again |
 | `storage.keep-days` | `30` | 0, or `max-age-days` to 3650. Lookups older than this are deleted. `0` keeps them forever. Each IP keeps only its latest lookup |
@@ -46,6 +54,34 @@ rules:
     mode: allowlist
     countries: [US, CA]
     bypass-permissions: ["origingate.bypass.country"]
+```
+
+### Example: country from MaxMind, VPN check from proxycheck.io
+
+```yaml
+lookup:
+  country-from: [maxmind, proxycheck]
+  vpn-from: [proxycheck, iphub]
+  iphub:
+    api-keys: ["your-iphub-key"]
+  maxmind:
+    account-id: 123456
+    license-key: "your_license_key"
+```
+
+The country comes from the local file, so proxycheck.io is only asked for the VPN check. If proxycheck.io fails, IPHub is asked.
+
+### Example: country rules only, no web requests
+
+```yaml
+lookup:
+  country-from: [maxmind]
+  vpn-from: []
+rules:
+  vpn:
+    enabled: false
+  proxy:
+    enabled: false
 ```
 
 ## messages.yml
