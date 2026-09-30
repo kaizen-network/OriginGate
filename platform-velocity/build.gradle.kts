@@ -9,7 +9,7 @@ val velocityApi = "com.velocitypowered:velocity-api:3.4.0-20260121.190037-118"
 val probe: SourceSet = sourceSets.create("probe")
 
 dependencies {
-    implementation(project(":core"))
+    implementation(project(":presentation"))
     compileOnly(velocityApi)
     annotationProcessor(velocityApi)
     testImplementation(velocityApi)
