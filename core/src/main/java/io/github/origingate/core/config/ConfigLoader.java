@@ -54,8 +54,8 @@ public final class ConfigLoader {
         lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "country-from", "vpn-from",
                 "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
         // Configs from before the provider lists used proxycheck for everything.
-        List<String> countryFrom = lookup.has("country-from") ? providers(lookup, "country-from") : List.of("proxycheck");
-        List<String> vpnFrom = lookup.has("vpn-from") ? providers(lookup, "vpn-from") : List.of("proxycheck");
+        List<String> countryFrom = lookup.has("country-from") ? providers(lookup, "country-from") : io.github.origingate.core.util.Compat.list("proxycheck");
+        List<String> vpnFrom = lookup.has("vpn-from") ? providers(lookup, "vpn-from") : io.github.origingate.core.util.Compat.list("proxycheck");
         if (countryFrom.isEmpty()) throw new ConfigException(lookup.key("country-from") + " needs at least one provider");
         for (String name : vpnFrom) {
             if (!Lookup.VPN_PROVIDERS.contains(name)) {
@@ -95,7 +95,7 @@ public final class ConfigLoader {
             if (result.contains(provider)) throw new ConfigException(lookup.key(name) + " lists " + provider + " twice");
             result.add(provider);
         }
-        return List.copyOf(result);
+        return io.github.origingate.core.util.Compat.listCopy(result);
     }
 
     private static ProxyCheck proxycheck(YamlSection proxycheck) throws ConfigException {
@@ -176,7 +176,7 @@ public final class ConfigLoader {
             String database = section.text("database", 1, 64);
             if (!database.matches("[A-Za-z0-9_]{1,64}")) throw new ConfigException(section.key("database") + " may contain only letters, numbers, and _");
             String sslMode = section.text("ssl-mode", 1, 16);
-            if (!Set.of("verify-full", "verify-ca", "disable").contains(sslMode)) {
+            if (!io.github.origingate.core.util.Compat.set("verify-full", "verify-ca", "disable").contains(sslMode)) {
                 throw new ConfigException(section.key("ssl-mode") + " must be verify-full, verify-ca, or disable");
             }
             mysql = new Mysql(host, section.integer("port", 1, 65535), database, section.text("username", 1, 80),
@@ -197,7 +197,7 @@ public final class ConfigLoader {
         bypass.allowOnly("permissions", "players", "addresses");
         Set<String> players = new LinkedHashSet<>();
         for (String player : bypass.list("players", MAX_LIST)) players.add(player.toLowerCase(Locale.ROOT));
-        return new Bypass(permissions(bypass, "permissions"), Set.copyOf(players), ranges(bypass, "addresses"));
+        return new Bypass(permissions(bypass, "permissions"), io.github.origingate.core.util.Compat.setCopy(players), ranges(bypass, "addresses"));
     }
 
     private static Rules rules(YamlSection rules) throws ConfigException {
@@ -237,7 +237,7 @@ public final class ConfigLoader {
             result.add(Countries.normalize(value).orElseThrow(() -> new ConfigException(
                     section.key(name) + " needs two-letter country codes such as US; not a known code: " + value)));
         }
-        return List.copyOf(result);
+        return io.github.origingate.core.util.Compat.listCopy(result);
     }
 
     private static List<AddressRange> ranges(YamlSection section, String name) throws ConfigException {
@@ -249,13 +249,13 @@ public final class ConfigLoader {
                 throw new ConfigException(section.key(name) + ": " + ex.getMessage(), ex);
             }
         }
-        return List.copyOf(result);
+        return io.github.origingate.core.util.Compat.listCopy(result);
     }
 
     private static Path inside(Path root, String value, String key) throws ConfigException {
         Path configured;
         try {
-            configured = Path.of(value);
+            configured = java.nio.file.Paths.get(value);
         } catch (RuntimeException ex) {
             throw new ConfigException(key + " is not a valid path", ex);
         }

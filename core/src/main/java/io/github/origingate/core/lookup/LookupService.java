@@ -29,7 +29,32 @@ public final class LookupService {
     public enum Source { MEMORY, STORAGE, PROVIDER }
 
     /** {@code answeredBy} names the providers for a fresh lookup, and is null for memory and storage. */
-    public record Result(IpInfo info, Source source, AnsweredBy answeredBy) {
+    public static final class Result {
+        private final IpInfo info;
+        private final Source source;
+        private final AnsweredBy answeredBy;
+
+        public Result(IpInfo info, Source source, AnsweredBy answeredBy) {
+            this.info = info;
+            this.source = source;
+            this.answeredBy = answeredBy;
+        }
+
+        public IpInfo info() { return info; }
+        public Source source() { return source; }
+        public AnsweredBy answeredBy() { return answeredBy; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Result)) return false;
+            Result that = (Result) other;
+            return java.util.Objects.equals(info, that.info)
+                && java.util.Objects.equals(source, that.source)
+                && java.util.Objects.equals(answeredBy, that.answeredBy);
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(info, source, answeredBy); }
+        @Override public String toString() { return "Result[" + "info=" + info + ", " + "source=" + source + ", " + "answeredBy=" + answeredBy + "]"; }
+
         public Result(IpInfo info, Source source) { this(info, source, null); }
     }
 
@@ -42,7 +67,7 @@ public final class LookupService {
     private final Log log;
     private final Map<String, CompletableFuture<Result>> inFlight = new ConcurrentHashMap<>();
     /** IPs whose last provider answer had no country, with the time they may be asked again. */
-    private final Map<String, Instant> noCountry = new LinkedHashMap<>(16, 0.75f, false) {
+    private final Map<String, Instant> noCountry = new LinkedHashMap<String, Instant>(16, 0.75f, false) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Instant> eldest) {
             return size() > MAX_NO_COUNTRY;
         }
@@ -75,7 +100,7 @@ public final class LookupService {
         CompletableFuture<Result> existing = inFlight.putIfAbsent(key, created);
         if (existing != null) {
             log.debug("Lookup for " + ip + " is already running, waiting for it");
-            return existing.copy();
+            return io.github.origingate.core.util.Futures.copy(existing);
         }
         try {
             executor.execute(() -> {
@@ -98,7 +123,7 @@ public final class LookupService {
             inFlight.remove(key, created);
             created.completeExceptionally(new LookupException("Too many lookups are waiting", ex));
         }
-        return created.copy();
+        return io.github.origingate.core.util.Futures.copy(created);
     }
 
     private Result load(String ip, boolean refresh) throws LookupException {
@@ -157,7 +182,7 @@ public final class LookupService {
     private void pauseStorage(String action, String ip, Exception ex) {
         storagePausedUntil = clock.instant().plus(STORAGE_PAUSE);
         log.warn("Could not " + action + " storage for " + ip + ", skipping storage for "
-                + STORAGE_PAUSE.toSeconds() + " seconds: " + Text.message(ex), null);
+                + STORAGE_PAUSE.getSeconds() + " seconds: " + Text.message(ex), null);
     }
 
     private Result remember(IpInfo info, Source source, AnsweredBy answeredBy) {

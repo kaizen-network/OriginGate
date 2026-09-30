@@ -59,6 +59,21 @@ class GateTest {
         return gate.check(attempt).get(15, TimeUnit.SECONDS);
     }
 
+    @Test void finalGlobalBypassWinsOverPrefetchFailure() throws Exception {
+        Gate gate = gate("lookup.on-lookup-failure", "deny", "bypass.permissions", List.of("origingate.bypass"));
+        Decision decision = gate.finish(player("FixtureUser", VPN_IP, "origingate.bypass"), null,
+                new java.util.concurrent.TimeoutException());
+        assertEquals(Outcome.ALLOW, decision.outcome());
+    }
+
+    @Test void finalRuleBypassUsesActualPlayerPermissions() throws Exception {
+        Gate gate = gate();
+        LookupService.Result lookup = new LookupService.Result(info(VPN_IP, "Netherlands", "NL", true, false),
+                LookupService.Source.PROVIDER);
+        assertEquals(Outcome.BYPASS, gate.finish(player("FixtureUser", VPN_IP, "origingate.bypass.vpn"), lookup, null).outcome());
+        assertEquals(Outcome.DENY, gate.finish(player("FixtureUser", VPN_IP), lookup, null).outcome());
+    }
+
     @Test void vpnIsKickedWithoutBypass() throws Exception {
         Decision decision = run(gate(), player("Alex", VPN_IP));
         assertEquals(Outcome.DENY, decision.outcome());

@@ -40,8 +40,8 @@ final class YamlSection {
             try (InputStream input = Files.newInputStream(file)) {
                 raw = new Yaml(new SafeConstructor(options)).load(input);
             }
-            if (!(raw instanceof Map<?, ?> map)) throw new ConfigException(name + " must contain a YAML map");
-            return new YamlSection(map, "");
+            if (!(raw instanceof Map<?, ?>)) throw new ConfigException(name + " must contain a YAML map");
+            return new YamlSection((Map<?, ?>) raw, "");
         } catch (IOException | RuntimeException ex) {
             throw new ConfigException("Cannot read " + name + ": " + ex.getMessage(), ex);
         }
@@ -50,9 +50,9 @@ final class YamlSection {
     String key(String name) { return path.isEmpty() ? name : path + "." + name; }
 
     void allowOnly(String... keys) throws ConfigException {
-        Set<String> allowed = Set.of(keys);
+        Set<String> allowed = io.github.origingate.core.util.Compat.set(keys);
         for (Object key : values.keySet()) {
-            if (!(key instanceof String text) || !allowed.contains(text)) {
+            if (!(key instanceof String) || !allowed.contains(key)) {
                 throw new ConfigException("Unknown setting: " + key(String.valueOf(key)));
             }
         }
@@ -61,49 +61,50 @@ final class YamlSection {
     boolean has(String name) { return values.containsKey(name); }
 
     YamlSection section(String name) throws ConfigException {
-        if (!(required(name) instanceof Map<?, ?> map)) throw new ConfigException(key(name) + " must be a section");
-        return new YamlSection(map, key(name));
+        if (!(required(name) instanceof Map<?, ?>)) throw new ConfigException(key(name) + " must be a section");
+        return new YamlSection((Map<?, ?>) required(name), key(name));
     }
 
     String text(String name, int min, int max) throws ConfigException {
-        if (!(required(name) instanceof String text) || text.length() < min || text.length() > max) {
+        if (!(required(name) instanceof String) || ((String) required(name)).length() < min || ((String) required(name)).length() > max) {
             throw new ConfigException(key(name) + " must be text with " + min + " to " + max + " characters");
         }
-        return text;
+        return (String) required(name);
     }
 
     boolean bool(String name) throws ConfigException {
-        if (!(required(name) instanceof Boolean value)) throw new ConfigException(key(name) + " must be true or false");
-        return value;
+        if (!(required(name) instanceof Boolean)) throw new ConfigException(key(name) + " must be true or false");
+        return (Boolean) required(name);
     }
 
     int integer(String name, int min, int max) throws ConfigException {
-        if (!(required(name) instanceof Integer value) || value < min || value > max) {
+        if (!(required(name) instanceof Integer) || (Integer) required(name) < min || (Integer) required(name) > max) {
             throw new ConfigException(key(name) + " must be a whole number from " + min + " to " + max);
         }
-        return value;
+        return (Integer) required(name);
     }
 
     /** A list of text values. Scalars such as numbers are accepted and read as text. */
     List<String> list(String name, int maxEntries) throws ConfigException {
-        if (!(required(name) instanceof List<?> raw)) throw new ConfigException(key(name) + " must be a list, for example []");
+        if (!(required(name) instanceof List<?>)) throw new ConfigException(key(name) + " must be a list, for example []");
+        List<?> raw = (List<?>) required(name);
         if (raw.size() > maxEntries) throw new ConfigException(key(name) + " allows at most " + maxEntries + " entries");
         List<String> result = new ArrayList<>(raw.size());
         for (Object item : raw) {
-            if (!(item instanceof String || item instanceof Number) || item.toString().isBlank()
+            if (!(item instanceof String || item instanceof Number) || io.github.origingate.core.util.Compat.blank(item.toString())
                     || item.toString().length() > 256) {
                 throw new ConfigException(key(name) + " contains an invalid entry: " + item);
             }
             result.add(item.toString().trim());
         }
-        return List.copyOf(result);
+        return io.github.origingate.core.util.Compat.listCopy(result);
     }
 
     <E extends Enum<E>> E choice(String name, Class<E> type) throws ConfigException {
         // YAML reads bare words such as off or yes as true/false, so anything that is not text lands here too.
-        if (required(name) instanceof String value) {
+        if (required(name) instanceof String) {
             for (E option : type.getEnumConstants()) {
-                if (option.name().equalsIgnoreCase(value)) return option;
+                if (option.name().equalsIgnoreCase((String) required(name))) return option;
             }
         }
         throw new ConfigException(key(name) + " must be one of " + options(type));

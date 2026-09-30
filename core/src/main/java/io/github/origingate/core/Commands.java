@@ -57,27 +57,30 @@ public final class Commands {
     public void execute(String[] args, Sender sender) {
         String sub = args.length == 0 ? "" : args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "check" -> {
+            case "check": {
                 if (!allowed(sender, CHECK)) return;
                 if (args.length < 2 || args.length > 3 || (args.length == 3 && !args[2].equalsIgnoreCase("refresh"))) {
                     sender.reply("Usage: /origingate check <player|ip> [refresh]");
                     return;
                 }
                 check(args[1], args.length == 3, sender);
+                break;
             }
-            case "reload" -> {
+            case "reload": {
                 if (!allowed(sender, RELOAD)) return;
                 sender.reply(platform.reload());
+                break;
             }
-            case "cache" -> {
+            case "cache": {
                 if (!allowed(sender, CACHE)) return;
                 if (args.length != 3 || !args[1].equalsIgnoreCase("clear")) {
                     sender.reply("Usage: /origingate cache clear <ip|all>");
                     return;
                 }
                 clear(args[2], sender);
+                break;
             }
-            default -> usage(sender);
+            default: usage(sender);
         }
     }
 
@@ -110,7 +113,7 @@ public final class Commands {
             attempt = player.get();
         } else {
             Optional<InetAddress> address = Addresses.parse(target);
-            if (address.isEmpty()) {
+            if (!address.isPresent()) {
                 sender.reply(target + " is not an online player or an IP address.");
                 return;
             }
@@ -125,7 +128,7 @@ public final class Commands {
         }
         sender.reply("Looking up " + who + (refresh ? " from the provider..." : "..."));
         CompletableFuture<LookupService.Result> lookup = runtime.gate().lookups().lookup(ip, refresh);
-        lookup.orTimeout(30, TimeUnit.SECONDS).whenComplete((result, error) -> {
+        io.github.origingate.core.util.Futures.timeout(lookup, 30, TimeUnit.SECONDS).whenComplete((result, error) -> {
             if (error != null) {
                 sender.reply("Lookup failed for " + ip + ": " + Text.message(error));
                 return;
@@ -155,11 +158,13 @@ public final class Commands {
 
     private static String result(Decision decision, boolean player) {
         String rule = decision.rule() == null ? "" : " by the " + decision.rule().id() + " rule";
-        String line = switch (decision.outcome()) {
-            case ALLOW -> "allowed";
-            case BYPASS -> "allowed through a bypass" + rule;
-            case DENY -> "kicked" + rule;
-        };
+        String line;
+        switch (decision.outcome()) {
+            case ALLOW: line = "allowed"; break;
+            case BYPASS: line = "allowed through a bypass" + rule; break;
+            case DENY: line = "kicked" + rule; break;
+            default: throw new AssertionError(decision.outcome());
+        }
         if (decision.outcome() == Decision.Outcome.DENY && decision.dryRun()) line += " (dry run: would kick, lets in)";
         return line + (decision.note() == null ? "" : " (" + decision.note() + ")") + " [" + DecisionLine.label(decision) + "]";
     }
@@ -172,7 +177,7 @@ public final class Commands {
             key = "all";
         } else {
             Optional<InetAddress> address = Addresses.parse(target);
-            if (address.isEmpty()) {
+            if (!address.isPresent()) {
                 sender.reply(target + " is not an IP address. Use an IP or all.");
                 return;
             }

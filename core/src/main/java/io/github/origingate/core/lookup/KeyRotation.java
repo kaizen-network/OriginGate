@@ -27,7 +27,7 @@ final class KeyRotation {
     private final Map<Integer, Instant> refusedUntil = new ConcurrentHashMap<>();
 
     KeyRotation(List<String> keys, String label, Clock clock, Log log) {
-        this.keys = List.copyOf(keys);
+        this.keys = io.github.origingate.core.util.Compat.listCopy(keys);
         this.label = label;
         this.clock = clock;
         this.log = log;

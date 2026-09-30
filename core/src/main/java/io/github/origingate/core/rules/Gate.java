@@ -50,14 +50,21 @@ public final class Gate {
         } catch (RuntimeException ex) {
             return CompletableFuture.completedFuture(failed(attempt, ex));
         }
-        return lookup.orTimeout(config.lookup().waitMillis(), TimeUnit.MILLISECONDS).handle((result, error) -> {
+        return io.github.origingate.core.util.Futures.timeout(lookup, config.lookup().waitMillis(), TimeUnit.MILLISECONDS)
+                .handle((result, error) -> finish(attempt, result, error));
+    }
+
+    /** Final identity and permissions are checked even when an earlier lookup failed. */
+    public Decision finish(LoginAttempt attempt, LookupService.Result result, Throwable error) {
+        try {
+            Optional<Decision> early = beforeLookup(attempt);
+            if (early.isPresent()) return early.get();
             if (error != null) return failed(attempt, error);
-            try {
-                return afterLookup(attempt, result);
-            } catch (RuntimeException ex) {
-                return failed(attempt, ex);
-            }
-        });
+            if (result == null) return failed(attempt, new IllegalStateException("No lookup result"));
+            return afterLookup(attempt, result);
+        } catch (RuntimeException ex) {
+            return failed(attempt, ex);
+        }
     }
 
     /** Checks that need no lookup. Empty means a lookup is needed. */
