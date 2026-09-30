@@ -3,3 +3,4 @@ include("core", "platform-velocity")
 
 include("maxmind-modern", "maxmind-legacy")
 include("presentation")
+include("platform-bukkit")

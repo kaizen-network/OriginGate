@@ -909,5 +909,18 @@
             <sha256 value="04a7281ddb9f96ab9eacacbe35bb4c8583a8369973d8883acf5faae91f851572" origin="Maven Central, SHA-1 sidecar checked"/>
          </artifact>
       </component>
+      <component group="org.slf4j" name="slf4j-jdk14" version="2.0.17">
+         <artifact name="slf4j-jdk14-2.0.17.pom">
+            <sha256 value="2acf3dc73eb431da02e54a8550aec8b9e1d287427390a904a6c946500f1a7114" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+         <artifact name="slf4j-jdk14-2.0.17.jar">
+            <sha256 value="ead25c1b15f59db1fb5552b76fe63de4164f0df40024d19287b75dece47ad3be" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+      </component>
+      <component group="org.bukkit" name="bukkit" version="1.7.2-R0.3">
+         <artifact name="bukkit-1.7.2-R0.3.jar">
+            <sha256 value="974bf506815db48ad48a101f9c0cf2a688015bdc8da2da250e70112474ce64e0" origin="Archived Bukkit API from maven.elmakers.com, inspected against upstream tag"/>
+         </artifact>
+      </component>
    </components>
 </verification-metadata>
