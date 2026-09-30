@@ -30,7 +30,8 @@ class VelocityArtifactTest {
                     "META-INF/licenses/SnakeYAML.txt", "META-INF/licenses/MariaDB-Connector-J.txt",
                     "META-INF/licenses/MaxMind-DB-Reader.txt",
                     "io/github/origingate/internal/snakeyaml/Yaml.class", "io/github/origingate/internal/mariadb/Driver.class",
-                    "io/github/origingate/internal/maxmind/Reader.class",
+                    "io/github/origingate/internal/maxmind17/Reader.class",
+                    "io/github/origingate/internal/gson/Gson.class",
                     "org/sqlite/JDBC.class", "io/github/origingate/core/rules/Gate.class"}) {
                 assertNotNull(jar.getEntry(entry), entry);
             }
@@ -38,7 +39,7 @@ class VelocityArtifactTest {
                     "libraries are relocated");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/maxmind/")), "MaxMind reader is relocated");
             assertTrue(jar.getEntry("module-info.class") == null, "no root module descriptor");
-            assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/google/gson/")), "Gson comes from the proxy");
+            assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/google/gson/")), "Gson is isolated");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("io/github/origingate/probe/")), "probe plugin is not shipped");
             assertFalse(jar.stream().anyMatch(e -> e.getName().startsWith("com/velocitypowered/")));
         }

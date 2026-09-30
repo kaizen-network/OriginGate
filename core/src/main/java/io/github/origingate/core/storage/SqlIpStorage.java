@@ -56,7 +56,7 @@ public final class SqlIpStorage implements IpStorage {
             if (allowUnreachable) return storage;
             throw ex;
         }
-        try (connection) {
+        try (Connection opened = connection) {
             storage.setup(connection);
         }
         return storage;
@@ -71,7 +71,7 @@ public final class SqlIpStorage implements IpStorage {
         }
         String url = "jdbc:sqlite:" + absolute;
         return open(() -> {
-            Connection connection = new org.sqlite.JDBC().connect(url, new Properties());
+            Connection connection = BundledSqlite.driver().connect(url, new Properties());
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA busy_timeout=5000");
             } catch (SQLException ex) {
