@@ -917,9 +917,43 @@
             <sha256 value="ead25c1b15f59db1fb5552b76fe63de4164f0df40024d19287b75dece47ad3be" origin="Maven Central, SHA-1 sidecar checked"/>
          </artifact>
       </component>
+      <component group="net.md-5" name="bungeecord-api" version="1.21-R0.4">
+         <artifact name="bungeecord-api-1.21-R0.4.pom">
+            <sha256 value="fde4cd30e80d6a4341e96868f410f106240861bdd010a59a171a60641d0cdb90" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+         <artifact name="bungeecord-api-1.21-R0.4.jar">
+            <sha256 value="12612c66e3a8cfbc0605680370c0f71028a99b50fe5f5befdc60331961f88589" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+      </component>
+      <component group="net.md-5" name="bungeecord-event" version="1.21-R0.4">
+         <artifact name="bungeecord-event-1.21-R0.4.pom">
+            <sha256 value="15c0d76bded9c0c0bfc2b334d0b4ddbc77867cc146ca9b5ff89442d731aaab8e" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+         <artifact name="bungeecord-event-1.21-R0.4.jar">
+            <sha256 value="fe034dc5ac550c71264cad9cddb5c38ddc8c8a70047d1fa3ee5bf99051236389" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+      </component>
+      <component group="net.md-5" name="bungeecord-chat" version="1.21-R0.4">
+         <artifact name="bungeecord-chat-1.21-R0.4.pom">
+            <sha256 value="dc974d1f12e14d570edb8fa189ab75d3cae239ada02e4ba4a53f66c37c7b1ef2" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+         <artifact name="bungeecord-chat-1.21-R0.4.jar">
+            <sha256 value="3bade7edb09149aff360836012b5e8b469416bed8edd4f63bda2cdcce3d450ca" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+      </component>
       <component group="org.bukkit" name="bukkit" version="1.7.2-R0.3">
          <artifact name="bukkit-1.7.2-R0.3.jar">
             <sha256 value="974bf506815db48ad48a101f9c0cf2a688015bdc8da2da250e70112474ce64e0" origin="Archived Bukkit API from maven.elmakers.com, inspected against upstream tag"/>
+         </artifact>
+      </component>
+      <component group="net.md-5" name="bungeecord-parent" version="1.21-R0.4">
+         <artifact name="bungeecord-parent-1.21-R0.4.pom">
+            <sha256 value="447f45f0e93b735f5c247be08a1a33f0c18287d47d183fff58da8d6ace0dd53e" origin="Maven Central, SHA-1 sidecar checked"/>
+         </artifact>
+      </component>
+      <component group="io.netty" name="netty-bom" version="4.2.3.Final">
+         <artifact name="netty-bom-4.2.3.Final.pom">
+            <sha256 value="97d9f19e0fec91acd76feb51184020c7166a20a31b8e486c69bbc7e575938204" origin="Maven Central, SHA-1 sidecar checked"/>
          </artifact>
       </component>
    </components>
