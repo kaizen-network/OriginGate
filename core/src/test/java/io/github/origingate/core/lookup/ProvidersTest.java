@@ -7,7 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.ZoneOffset;
@@ -27,7 +27,7 @@ class ProvidersTest {
 
     private Providers start(Object... changes) throws Exception {
         OriginGateConfig config = TestSupport.config(directory, changes);
-        providers = Providers.start(config.lookup(), HttpClient.newHttpClient(), Clock.fixed(TestSupport.NOW, ZoneOffset.UTC),
+        providers = Providers.start(config.lookup(), HttpTransport.newHttpClient(), Clock.fixed(TestSupport.NOW, ZoneOffset.UTC),
                 log, "OriginGate/test");
         return providers;
     }

@@ -8,9 +8,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import io.github.origingate.core.net.HttpTransport;
+import io.github.origingate.core.net.HttpRequest;
+import io.github.origingate.core.net.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -41,7 +41,7 @@ public final class MaxMindUpdater {
 
     public enum Outcome { DOWNLOADED, UP_TO_DATE }
 
-    private final HttpClient http;
+    private final HttpTransport http;
     private final URI url;
     private final String edition;
     private final String authorization;
@@ -51,7 +51,7 @@ public final class MaxMindUpdater {
     private final Log log;
     private final String userAgent;
 
-    public MaxMindUpdater(HttpClient http, URI baseUrl, String edition, int accountId, String licenseKey,
+    public MaxMindUpdater(HttpTransport http, URI baseUrl, String edition, int accountId, String licenseKey,
                           MaxMindProvider provider, Path file, Log log, String userAgent) {
         this.http = http;
         String base = baseUrl.toString();

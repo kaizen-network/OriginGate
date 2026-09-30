@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -48,7 +48,7 @@ class IpHubProviderTest {
             int status = key == null ? 200 : keyStatus.getOrDefault(key, 200);
             return Reply.text(status, status == 200 ? body : "{}");
         });
-        return new IpHubProvider(HttpClient.newHttpClient(), server.uri("/ip/"), keys, Duration.ofSeconds(3), clock,
+        return new IpHubProvider(HttpTransport.newHttpClient(), server.uri("/ip/"), keys, Duration.ofSeconds(3), clock,
                 Log.NONE, "OriginGate/test");
     }
 
@@ -135,7 +135,7 @@ class IpHubProviderTest {
             clock.advance(Duration.ofSeconds(3));
             return Reply.text(429, "{}");
         });
-        IpHubProvider provider = new IpHubProvider(HttpClient.newHttpClient(), server.uri("/ip/"),
+        IpHubProvider provider = new IpHubProvider(HttpTransport.newHttpClient(), server.uri("/ip/"),
                 List.of("key-one", "key-two", "key-three", "key-four"), Duration.ofSeconds(3), clock, Log.NONE, "OriginGate/test");
         LookupException failure = assertThrows(LookupException.class,
                 () -> provider.lookup("8.8.8.8", TestSupport.NOW.plusSeconds(5)));

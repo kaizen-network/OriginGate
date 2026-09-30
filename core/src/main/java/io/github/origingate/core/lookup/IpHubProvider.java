@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import io.github.origingate.core.Log;
 
 import java.net.URI;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -24,7 +24,7 @@ public final class IpHubProvider implements LookupProvider {
     private final KeyRotation keys;
     private final Clock clock;
 
-    public IpHubProvider(HttpClient http, URI baseUrl, List<String> keys, Duration requestTimeout, Clock clock, Log log,
+    public IpHubProvider(HttpTransport http, URI baseUrl, List<String> keys, Duration requestTimeout, Clock clock, Log log,
                          String userAgent) {
         this.http = new HttpLookup(http, requestTimeout, userAgent, LABEL);
         this.baseUrl = HttpLookup.withSlash(baseUrl);
@@ -39,7 +39,7 @@ public final class IpHubProvider implements LookupProvider {
     }
 
     private IpInfo request(String ip, String key) throws LookupException {
-        HttpLookup.Response response = http.get(URI.create(baseUrl + ip), key == null ? Map.of() : Map.of("X-Key", key));
+        HttpLookup.Response response = http.get(URI.create(baseUrl + ip), key == null ? io.github.origingate.core.util.Compat.map() : io.github.origingate.core.util.Compat.map("X-Key", key));
         int code = response.status();
         if (code == 401 || code == 403 || code == 429) throw new KeyRejectedException("HTTP " + code);
         if (code != 200) throw new LookupException(LABEL + " answered HTTP " + code);

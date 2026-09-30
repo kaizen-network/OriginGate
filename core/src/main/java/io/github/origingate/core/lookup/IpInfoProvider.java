@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -23,7 +23,7 @@ public final class IpInfoProvider implements LookupProvider {
     private final String token;
     private final Clock clock;
 
-    public IpInfoProvider(HttpClient http, URI baseUrl, String token, Duration requestTimeout, Clock clock, String userAgent) {
+    public IpInfoProvider(HttpTransport http, URI baseUrl, String token, Duration requestTimeout, Clock clock, String userAgent) {
         this.http = new HttpLookup(http, requestTimeout, userAgent, LABEL);
         this.baseUrl = HttpLookup.withSlash(baseUrl);
         this.token = token;
@@ -33,8 +33,8 @@ public final class IpInfoProvider implements LookupProvider {
     @Override public String name() { return "ipinfo"; }
 
     @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
-        URI uri = URI.create(baseUrl + ip + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8));
-        HttpLookup.Response response = http.get(uri, Map.of());
+        URI uri = URI.create(baseUrl + ip + "?token=" + io.github.origingate.core.util.Compat.encode(token));
+        HttpLookup.Response response = http.get(uri, io.github.origingate.core.util.Compat.map());
         int code = response.status();
         if (code == 401 || code == 403 || code == 429) throw new KeyRejectedException("HTTP " + code);
         if (code != 200) throw new LookupException(LABEL + " answered HTTP " + code);
