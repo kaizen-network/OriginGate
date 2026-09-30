@@ -19,6 +19,22 @@
 
 `platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes) and that placeholders render as plain text.
 
+`platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds and proxy packaging.
+
+With JDK 8 installed, run `gradlew :platform-bukkit:legacyRuntimeProbe` to exercise the packaged MaxMind IPv4/IPv6 reader and SQLite on Java 8. Optional `-PlegacyServerJar=<absolute-path-to-craftbukkit.jar>` places an old server first on the classpath to verify SQLite isolation.
+
+## Bukkit and BungeeCord connection probes
+
+`tools/run_platform_probe.py` copies a supplied server JAR into an isolated `.run/integration-<platform>` folder, binds to loopback, installs test-only permission/routing plugins, and checks allow/deny, bypasses, failures, dry-run, reload, and timeout behavior. It stops its own server afterwards. Use a disposable local server JAR, Python 3.11+, and JDK 25's `javac` on PATH. Select the server's Java runtime with `--java`.
+
+```powershell
+python tools/run_platform_probe.py bukkit --server path/to/craftbukkit.jar --bukkit-api path/to/bukkit-1.7.2-R0.3.jar --java path/to/java8/bin/java
+python tools/run_platform_probe.py bungee --server path/to/BungeeCord.jar --java path/to/java21/bin/java
+python tools/run_platform_probe.py paper --server path/to/paper.jar --bukkit-api path/to/bukkit-1.7.2-R0.3.jar --modules path/to/node_modules --client-version 1.21.8 --java path/to/java21/bin/java
+```
+
+Paper and newer Spigot tests use a local `minecraft-protocol` Node dependency through `--modules`. Choose a compatible `--client-version`. Paper 1.21.7 and 1.21.8 share a protocol. For simultaneous test servers, choose distinct `--port` and `--run-name` values. The Bungee probe also uses the next port for a dummy backend and checks that another plugin cannot route a denied player there.
+
 ## Docs check
 
 ```powershell

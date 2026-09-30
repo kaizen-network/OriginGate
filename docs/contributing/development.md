@@ -2,7 +2,7 @@
 
 ## Build
 
-Use JDK 25 to run the Gradle wrapper. Bytecode targets Java 21.
+Use JDK 25 to run the Gradle wrapper. Core, shared messages, Bukkit, and BungeeCord sources target Java 8 bytecode; Velocity targets Java 21. BungeeCord itself requires Java 11 or newer. Server smoke tests also need their corresponding Java runtimes.
 
 ```powershell
 .\gradlew.bat build
@@ -10,7 +10,7 @@ Use JDK 25 to run the Gradle wrapper. Bytecode targets Java 21.
 
 On Linux or macOS, run `./gradlew build`. `build` contacts no remote database and no real lookup API.
 
-Output: `platform-velocity/build/libs/OriginGate-Velocity-<version>.jar`. It bundles the core, relocated SnakeYAML and MariaDB Connector/J, and SQLite JDBC with its native libraries. Gson, Adventure, and SLF4J come from Velocity.
+Outputs are `platform-bukkit/build/libs/OriginGate-Bukkit-<version>.jar`, `platform-bungeecord/build/libs/OriginGate-BungeeCord-<version>.jar`, and `platform-velocity/build/libs/OriginGate-Velocity-<version>.jar`. Each bundles the shared core and its dependencies. See [dependency notices](../../THIRD_PARTY_NOTICES.md) for packaging details.
 
 The version is set only in `gradle.properties`. The build writes it into the generated `BuildInfo` class, which the plugin descriptor and the probe also use.
 
@@ -18,8 +18,10 @@ The version is set only in `gradle.properties`. The build writes it into the gen
 
 - `core`: config loading and validation, rules, lookup providers, cache, storage, logs, and commands. No Velocity imports.
 - `platform-velocity`: the Velocity plugin (events, messages, command wrapper). The `probe` source set builds a test-only permission plugin that is never shipped.
-
-A Paper or BungeeCord port would add another `platform-*` module on top of `core`.
+- `platform-bukkit`: asynchronous prefetch, final permission checks, and a reconnect fallback for old offline-mode CraftBukkit.
+- `platform-bungeecord`: an asynchronous post-login intent holds the first backend connection.
+- `presentation`: shared MiniMessage templates and legacy chat conversion.
+- `maxmind-modern` and `maxmind-legacy`: isolated reader dependencies selected by the running Java version.
 
 ## Dependencies
 
@@ -35,7 +37,7 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 
 ## GitHub Actions
 
-`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs: Ubuntu 24.04, Temurin JDK 25, a syntax check of the probe script, the docs check and its tests, then `build` and `probeJar`. It keeps the plugin JAR for 14 days and test reports for 7. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. The loopback probe needs a Velocity JAR, so it is not part of CI.
+`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs. It uses Ubuntu 24.04, Temurin JDK 25 for builds, and JDK 8 for the packaged runtime check. It checks the probe scripts and docs, runs the build and tests, and keeps all three plugin JARs for 14 days and test reports for 7. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. Connection probes need separately supplied server JARs, so they are not part of CI.
 
 ## Releasing
 
