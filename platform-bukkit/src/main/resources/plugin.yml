@@ -1,0 +1,24 @@
+name: OriginGate
+version: '${version}'
+main: io.github.origingate.bukkit.OriginGateBukkit
+description: VPN, proxy, and country checks before joining
+softdepend: [LuckPerms]
+commands:
+  origingate:
+    description: Inspect connections and manage OriginGate
+    usage: /origingate <check|reload|cache>
+permissions:
+  origingate.command.check:
+    default: op
+  origingate.command.reload:
+    default: op
+  origingate.command.cache:
+    default: op
+  origingate.bypass.vpn:
+    default: false
+  origingate.bypass.proxy:
+    default: false
+  origingate.bypass.country:
+    default: false
+  origingate.bypass.deny-addresses:
+    default: false

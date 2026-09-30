@@ -10,7 +10,9 @@ order: 7
 
 OriginGate checks each player during Velocity's `LoginEvent`, without blocking the proxy's network threads. The login is held while the check runs. A kicked player is disconnected before Velocity connects them to any backend server.
 
-The check runs after permission plugins such as LuckPerms have loaded the player, so bypass permissions work. If another plugin already denied the login (a ban plugin, for example), OriginGate does nothing and makes no lookup.
+BungeeCord uses an asynchronous `PostLoginEvent` hold and guards early backend connection requests. Bukkit/Spigot/Paper fetches IP data during asynchronous pre-login, then applies the final decision and permission checks at `PlayerLoginEvent`, before world admission. Old offline-mode CraftBukkit may require a reconnect; see [compatibility](compatibility.md#platforms).
+
+On Velocity, the check runs after permission plugins such as LuckPerms have loaded the player, so bypass permissions work. If another plugin already denied the login (a ban plugin, for example), OriginGate does nothing and makes no lookup. See [compatibility](compatibility.md) for permission timing on the other platforms.
 
 ## Order of checks
 
@@ -63,3 +65,5 @@ Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`. `source` is `memory`, `storage`
 | `debug` | Every login, plus each step of the check |
 
 `log-file: true` writes the same lines as `matches` to `plugins/origingate/logs/<date>.log`, whatever the console level is. Files older than `log-file-keep-days` are deleted.
+
+On Bukkit and BungeeCord, decision logs use a limited background queue so slow writes do not delay connection checks. If that queue fills, excess entries are skipped and a warning is logged when writing resumes.

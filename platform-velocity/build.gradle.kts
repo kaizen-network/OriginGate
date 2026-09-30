@@ -9,7 +9,7 @@ val velocityApi = "com.velocitypowered:velocity-api:3.4.0-20260121.190037-118"
 val probe: SourceSet = sourceSets.create("probe")
 
 dependencies {
-    implementation(project(":core"))
+    implementation(project(":presentation"))
     compileOnly(velocityApi)
     annotationProcessor(velocityApi)
     testImplementation(velocityApi)
@@ -24,11 +24,12 @@ tasks.jar {
 tasks.shadowJar {
     archiveBaseName.set("OriginGate-Velocity")
     archiveClassifier.set("")
-    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    filesMatching("META-INF/services/**") { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
     mergeServiceFiles()
     relocate("org.yaml.snakeyaml", "io.github.origingate.internal.snakeyaml")
     relocate("org.mariadb.jdbc", "io.github.origingate.internal.mariadb")
-    relocate("com.maxmind.db", "io.github.origingate.internal.maxmind")
+    relocate("com.google.gson", "io.github.origingate.internal.gson")
     // maxmind-db ships a root module descriptor; the plugin is loaded from the class path, so it is not needed.
     exclude("module-info.class")
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")

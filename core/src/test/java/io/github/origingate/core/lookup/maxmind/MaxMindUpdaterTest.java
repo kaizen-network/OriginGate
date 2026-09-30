@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -93,7 +93,7 @@ class MaxMindUpdaterTest {
     }
 
     private MaxMindUpdater updater(String edition, String licenseKey) {
-        return new MaxMindUpdater(HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
+        return new MaxMindUpdater(HttpTransport.newBuilder().followRedirects(HttpTransport.Redirect.NEVER).build(),
                 server.uri("/geoip/databases/"), edition, 123456, licenseKey, provider, file(), Log.NONE,
                 "OriginGate/test");
     }

@@ -6,7 +6,7 @@ import io.github.origingate.core.Log;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -25,7 +25,7 @@ public final class ProxyCheckProvider implements LookupProvider {
     private final KeyRotation keys;
     private final Clock clock;
 
-    public ProxyCheckProvider(HttpClient http, URI baseUrl, List<String> keys, Duration requestTimeout, Clock clock,
+    public ProxyCheckProvider(HttpTransport http, URI baseUrl, List<String> keys, Duration requestTimeout, Clock clock,
                               Log log, String userAgent) {
         this.http = new HttpLookup(http, requestTimeout, userAgent, LABEL);
         this.baseUrl = HttpLookup.withSlash(baseUrl);
@@ -40,8 +40,8 @@ public final class ProxyCheckProvider implements LookupProvider {
     }
 
     private IpInfo request(String ip, String key) throws LookupException {
-        URI uri = URI.create(baseUrl + ip + (key == null ? "" : "?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8)));
-        HttpLookup.Response response = http.get(uri, Map.of());
+        URI uri = URI.create(baseUrl + ip + (key == null ? "" : "?key=" + io.github.origingate.core.util.Compat.encode(key)));
+        HttpLookup.Response response = http.get(uri, io.github.origingate.core.util.Compat.map());
         int code = response.status();
         if (code == 401 || code == 403 || code == 429) throw new KeyRejectedException("HTTP " + code + Json.message(response.body()));
         if (code != 200) throw new LookupException(LABEL + " answered HTTP " + code + Json.message(response.body()));

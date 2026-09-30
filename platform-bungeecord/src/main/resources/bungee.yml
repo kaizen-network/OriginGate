@@ -1,0 +1,5 @@
+name: OriginGate
+version: '${version}'
+main: io.github.origingate.bungee.OriginGateBungee
+description: VPN, proxy, and country checks before backend admission
+softDepends: [LuckPerms]

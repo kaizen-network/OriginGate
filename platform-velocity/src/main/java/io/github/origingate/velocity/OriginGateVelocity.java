@@ -224,20 +224,6 @@ public final class OriginGateVelocity {
     }
 
     static Component render(String template, LoginAttempt attempt, Decision decision) {
-        IpInfo info = decision.lookup() == null ? null : decision.lookup().info();
-        TagResolver placeholders = TagResolver.resolver(
-                Placeholder.unparsed("username", attempt.username()),
-                Placeholder.unparsed("uuid", attempt.uuid() == null ? "-" : attempt.uuid().toString()),
-                Placeholder.unparsed("ip", Addresses.text(attempt.address())),
-                Placeholder.unparsed("rule", decision.rule() == null ? "-" : decision.rule().id()),
-                Placeholder.unparsed("time", String.valueOf(Instant.now().getEpochSecond())),
-                Placeholder.unparsed("provider", Text.dash(info == null ? null : info.provider())),
-                Placeholder.unparsed("organisation", Text.dash(info == null ? null : info.displayOrganisation())),
-                Placeholder.unparsed("country", Text.dash(info == null ? null : info.country())),
-                Placeholder.unparsed("country_code", Text.dash(info == null ? null : info.countryCode())),
-                Placeholder.unparsed("city", Text.dash(info == null ? null : info.city())),
-                Placeholder.unparsed("region", Text.dash(info == null ? null : info.region())),
-                Placeholder.unparsed("type", Text.dash(info == null ? null : info.type())));
-        return MiniMessage.miniMessage().deserialize(template, placeholders);
+        return io.github.origingate.presentation.MessagesRenderer.render(template, attempt, decision);
     }
 }

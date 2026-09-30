@@ -1,6 +1,6 @@
 package io.github.origingate.core.lookup.maxmind;
 
-import com.maxmind.db.Reader;
+
 import io.github.origingate.core.Log;
 import io.github.origingate.core.Text;
 
@@ -8,9 +8,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import io.github.origingate.core.net.HttpTransport;
+import io.github.origingate.core.net.HttpRequest;
+import io.github.origingate.core.net.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -41,7 +41,7 @@ public final class MaxMindUpdater {
 
     public enum Outcome { DOWNLOADED, UP_TO_DATE }
 
-    private final HttpClient http;
+    private final HttpTransport http;
     private final URI url;
     private final String edition;
     private final String authorization;
@@ -51,7 +51,7 @@ public final class MaxMindUpdater {
     private final Log log;
     private final String userAgent;
 
-    public MaxMindUpdater(HttpClient http, URI baseUrl, String edition, int accountId, String licenseKey,
+    public MaxMindUpdater(HttpTransport http, URI baseUrl, String edition, int accountId, String licenseKey,
                           MaxMindProvider provider, Path file, Log log, String userAgent) {
         this.http = http;
         String base = baseUrl.toString();
@@ -92,7 +92,7 @@ public final class MaxMindUpdater {
         } finally {
             Files.deleteIfExists(temp);
         }
-        Files.writeString(releaseFile, "# Written by OriginGate's MaxMind updater. Delete it to download the file again.\n"
+        io.github.origingate.core.util.Compat.writeString(releaseFile, "# Written by OriginGate's MaxMind updater. Delete it to download the file again.\n"
                 + "released=" + released + "\nbuilt=" + built + "\n", StandardCharsets.UTF_8);
         provider.reload();
         log.info("Downloaded MaxMind " + edition + " released " + released);
@@ -106,7 +106,7 @@ public final class MaxMindUpdater {
      */
     private boolean isCurrent(Instant released) {
         Optional<Instant> inUse = provider.buildTime();
-        if (inUse.isEmpty() || !Files.isRegularFile(releaseFile)) return false;
+        if (!inUse.isPresent() || !Files.isRegularFile(releaseFile)) return false;
         if (!provider.databaseType().map(edition::equals).orElse(false)) return false;
         try (BufferedReader text = Files.newBufferedReader(releaseFile, StandardCharsets.UTF_8)) {
             Properties record = new Properties();
@@ -152,7 +152,7 @@ public final class MaxMindUpdater {
     }
 
     private static void discard(HttpResponse<?> response) throws IOException {
-        if (response.body() instanceof InputStream body) body.close();
+        if (response.body() instanceof InputStream) ((InputStream) response.body()).close();
     }
 
     private static Instant lastModified(HttpResponse<?> response) throws IOException {
@@ -167,10 +167,10 @@ public final class MaxMindUpdater {
 
     /** Opens the new file once, checks it is the configured edition, and returns its build date. */
     private Instant check(Path candidate) throws IOException {
-        try (Reader reader = new Reader(candidate.toFile(), Reader.FileMode.MEMORY)) {
-            String type = reader.getMetadata().databaseType();
+        try (MaxMindDatabase reader = new MaxMindDatabase(candidate)) {
+            String type = reader.databaseType();
             if (!edition.equals(type)) throw new IOException("MaxMind sent a " + type + " file instead of " + edition);
-            return reader.getMetadata().buildTime();
+            return reader.buildTime();
         } catch (RuntimeException ex) {
             throw new IOException("The downloaded MaxMind file cannot be read: " + Text.message(ex), ex);
         }
