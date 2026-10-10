@@ -1,10 +1,18 @@
 plugins { `java-library`; id("com.gradleup.shadow") }
+val mockitoAgent = configurations.create("mockitoAgent")
 dependencies {
     implementation(project(":presentation"))
     compileOnly("net.md-5:bungeecord-api:1.21-R0.4") { isTransitive = false }
     compileOnly("net.md-5:bungeecord-event:1.21-R0.4") { isTransitive = false }
     compileOnly("net.md-5:bungeecord-chat:1.21-R0.4") { isTransitive = false }
     runtimeOnly("org.slf4j:slf4j-jdk14:2.0.17")
+    testImplementation("net.md-5:bungeecord-api:1.21-R0.4") { isTransitive = false }
+    testImplementation("net.md-5:bungeecord-chat:1.21-R0.4") { isTransitive = false }
+    testRuntimeOnly("net.md-5:bungeecord-event:1.21-R0.4") { isTransitive = false }
+    testRuntimeOnly("net.md-5:bungeecord-dialog:1.21-R0.4") { isTransitive = false }
+    testRuntimeOnly("com.google.guava:guava:31.0.1-jre") { isTransitive = false }
+    testImplementation("org.mockito:mockito-core:5.20.0")
+    mockitoAgent("org.mockito:mockito-core:5.20.0") { isTransitive = false }
 }
 tasks.compileJava { options.release.set(8) }
 tasks.jar { enabled = false }
@@ -27,6 +35,7 @@ tasks.processResources {
 }
 tasks.assemble { dependsOn(tasks.shadowJar) }
 tasks.test {
+    doFirst { jvmArgs("-javaagent:${mockitoAgent.singleFile}") }
     dependsOn(tasks.shadowJar)
     systemProperty("origingate.artifact", tasks.shadowJar.get().archiveFile.get().asFile.absolutePath)
 }

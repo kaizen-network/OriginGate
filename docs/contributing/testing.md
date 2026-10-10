@@ -19,7 +19,9 @@
 
 `platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes) and that placeholders render as plain text.
 
-`platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds and proxy packaging.
+`platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds, proxy packaging, and connection routing while admission is pending. Its routing tests exercise the real event handlers and BungeeCord 1.21-R0.4 events with a manually completed admission future: denied players remain blocked, allowed/bypassed/dry-run players resume at their deferred destination, and disconnects release the intent and clear state even when a decision arrives later. They require no running proxy, network lookup, or sleeps.
+
+Run just the routing regressions with `./gradlew :platform-bungeecord:test --tests '*ConnectionRoutingTest'` (or `gradlew.bat` on Windows).
 
 With JDK 8 installed, run `gradlew :platform-bukkit:legacyRuntimeProbe` to exercise the packaged MaxMind IPv4/IPv6 reader and SQLite on Java 8. Optional `-PlegacyServerJar=<absolute-path-to-craftbukkit.jar>` places an old server first on the classpath to verify SQLite isolation.
 
