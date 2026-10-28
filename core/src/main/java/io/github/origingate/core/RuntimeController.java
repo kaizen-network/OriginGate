@@ -97,7 +97,7 @@ public final class RuntimeController implements AutoCloseable {
         String line = DecisionLine.format(attempt, decision);
         if (active.config().consoleLog().shows(decision)) log.info(line);
         if (active.decisionFile() != null && decision.rule() != null) {
-            try { active.decisionFile().write(line); } catch (Exception ex) { log.warn("Could not write OriginGate log", ex); }
+            try { active.decisionFile().write(line); } catch (Exception ex) { log.warn("Could not write the OriginGate log file: " + Text.message(ex), null); }
         }
     }
     /** Snapshot on the platform's allowed thread, before asynchronous rule evaluation. */
