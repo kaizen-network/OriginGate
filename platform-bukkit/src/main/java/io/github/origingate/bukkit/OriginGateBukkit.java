@@ -57,7 +57,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         String key = key(event.getName(), event.getAddress());
         Preflight flight = new Preflight(active);
         if (!pending.put(key, flight)) {
-            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "A connection check is already pending. Please reconnect shortly.");
+            event.disallow(AsyncPlayerPreLoginEvent.Result.KICK_OTHER, "Too many connections are being checked. Please reconnect shortly.");
             return;
         }
         preflightEvents.put(event, flight);
@@ -76,8 +76,10 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     @EventHandler(priority = EventPriority.MONITOR)
     public void preLoginFinished(AsyncPlayerPreLoginEvent event) {
         Preflight flight = preflightEvents.remove(event);
-        if (flight != null && event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED)
-            pending.remove(key(event.getName(), event.getAddress()), flight);
+        if (flight == null) return;
+        String key = key(event.getName(), event.getAddress());
+        if (event.getLoginResult() == AsyncPlayerPreLoginEvent.Result.ALLOWED) pending.finish(key, flight);
+        else pending.remove(key, flight);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
