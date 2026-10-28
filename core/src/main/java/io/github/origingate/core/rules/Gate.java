@@ -12,9 +12,12 @@ import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.Decision.Outcome;
 
 import java.net.InetAddress;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,11 +30,23 @@ public final class Gate {
     private final OriginGateConfig config;
     private final LookupService lookups;
     private final Log log;
+    private final Set<String> permissionNames;
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log) {
         this.config = config;
         this.lookups = lookups;
         this.log = log;
+        Set<String> names = new LinkedHashSet<>(config.bypass().permissions());
+        names.addAll(config.rules().denyAddresses().bypassPermissions());
+        names.addAll(config.rules().vpn().bypassPermissions());
+        names.addAll(config.rules().proxy().bypassPermissions());
+        names.addAll(config.rules().country().bypassPermissions());
+        this.permissionNames = Collections.unmodifiableSet(names);
+    }
+
+    /** Every permission these checks read, so a platform can look them up before checking on another thread. */
+    public Set<String> permissionNames() {
+        return permissionNames;
     }
 
     /** Runs every check. The future never completes exceptionally; failures follow {@code on-lookup-failure}. */

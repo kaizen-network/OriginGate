@@ -102,13 +102,8 @@ public final class RuntimeController implements AutoCloseable {
     }
     /** Snapshot on the platform's allowed thread, before asynchronous rule evaluation. */
     public static Predicate<String> permissions(OriginGateRuntime active, Predicate<String> source) {
-        Set<String> names = new HashSet<>(active.config().bypass().permissions());
-        names.addAll(active.config().rules().denyAddresses().bypassPermissions());
-        names.addAll(active.config().rules().vpn().bypassPermissions());
-        names.addAll(active.config().rules().proxy().bypassPermissions());
-        names.addAll(active.config().rules().country().bypassPermissions());
         Set<String> granted = new HashSet<>();
-        for (String name : names) if (source.test(name)) granted.add(name);
+        for (String name : active.gate().permissionNames()) if (source.test(name)) granted.add(name);
         return granted::contains;
     }
     /**

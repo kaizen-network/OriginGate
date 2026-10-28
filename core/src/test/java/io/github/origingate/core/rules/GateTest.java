@@ -59,6 +59,12 @@ class GateTest {
         return gate.check(attempt).get(15, TimeUnit.SECONDS);
     }
 
+    @Test void permissionNamesCoverEveryCheckedPermission() throws Exception {
+        Gate gate = gate("bypass.permissions", List.of("staff.bypass"), "rules.deny-addresses.bypass-permissions", List.of("staff.deny"));
+        assertTrue(gate.permissionNames().containsAll(List.of("staff.bypass", "staff.deny",
+                "origingate.bypass.vpn", "origingate.bypass.proxy", "origingate.bypass.country")), gate.permissionNames().toString());
+    }
+
     @Test void finalGlobalBypassWinsOverPrefetchFailure() throws Exception {
         Gate gate = gate("lookup.on-lookup-failure", "deny", "bypass.permissions", List.of("origingate.bypass"));
         Decision decision = gate.finish(player("FixtureUser", VPN_IP, "origingate.bypass"), null,

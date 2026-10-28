@@ -9,6 +9,8 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
 import org.bukkit.event.player.*;
+import org.bukkit.permissions.Permission;
+import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.net.InetAddress;
 import java.time.Clock;
@@ -27,6 +29,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private RuntimeController controller;
     private Commands commands;
     private volatile boolean stopping;
+    private OriginGateRuntime declared;
 
     @Override public void onEnable() {
         stopping = false;
@@ -162,8 +165,19 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     }
 
     private LoginAttempt attempt(OriginGateRuntime active, Player player, InetAddress address) {
+        declare(active);
         return new LoginAttempt(player.getName(), player.getUniqueId(), address, RuntimeController.permissions(active, player::hasPermission));
     }
+    /** Bukkit grants operators every permission no plugin declares, so configured bypass names are declared as not default. */
+    private void declare(OriginGateRuntime active) {
+        if (declared == active) return;
+        for (String name : active.gate().permissionNames()) {
+            if (getServer().getPluginManager().getPermission(name) == null)
+                getServer().getPluginManager().addPermission(new Permission(name, PermissionDefault.FALSE));
+        }
+        declared = active;
+    }
+
     private static String key(String name, InetAddress address) { return name.toLowerCase(Locale.ROOT) + "/" + Addresses.text(address); }
     /** Returns {@code fallback} when the template cannot be rendered. */
     private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
