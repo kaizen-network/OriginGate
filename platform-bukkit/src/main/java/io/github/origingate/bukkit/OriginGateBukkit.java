@@ -18,7 +18,7 @@ import java.util.concurrent.*;
 public final class OriginGateBukkit extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
     private final PendingAdmissions<Preflight> pending = new PendingAdmissions<>(512, Clock.systemUTC());
     private final DeferredAdmission<LookupService.Result> deferred = new DeferredAdmission<>(512, Clock.systemUTC());
-    private final Map<Player, String> notices = new ConcurrentHashMap<>();
+    private final Map<UUID, Notice> notices = new ConcurrentHashMap<>();
     private final Map<AsyncPlayerPreLoginEvent, Preflight> preflightEvents = new ConcurrentHashMap<>();
     private RuntimeController controller;
     private Commands commands;
@@ -47,7 +47,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         getCommand("origingate").setTabCompleter(this);
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getScheduler().runTaskTimerAsynchronously(this, controller::cleanup, 1200, 72000);
-        getServer().getScheduler().runTaskTimerAsynchronously(this, () -> { pending.expire(); deferred.expire(); }, 1200, 1200);
+        getServer().getScheduler().runTaskTimerAsynchronously(this, () -> { pending.expire(); deferred.expire(); expireNotices(); }, 1200, 1200);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -87,6 +87,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         if (stopping) return;
         Preflight flight = pending.take(key(event.getPlayer().getName(), event.getAddress()));
         if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) return;
+        notices.remove(event.getPlayer().getUniqueId());
         OriginGateRuntime active = flight == null ? controller.runtime() : flight.runtime;
         if (active == null) return;
         LoginAttempt attempt = attempt(active, event.getPlayer(), event.getAddress());
@@ -112,36 +113,44 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         background(() -> controller.report(active, attempt, reported));
         if (decision.dryRun()) return;
         if (decision.kicks()) {
-            event.disallow(PlayerLoginEvent.Result.KICK_OTHER, render(active.messages().kick(decision.rule()), attempt, decision));
+            event.disallow(PlayerLoginEvent.Result.KICK_OTHER,
+                    render(active.messages().kick(decision.rule()), attempt, decision, "You cannot join this server."));
             alert(active, active.messages().alertDenied(), attempt, decision);
         } else if (decision.outcome() == Decision.Outcome.BYPASS) {
-            if (!active.messages().bypassNotice().isEmpty())
-                notices.put(event.getPlayer(), render(active.messages().bypassNotice(), attempt, decision));
+            String notice = active.messages().bypassNotice().isEmpty() ? null : render(active.messages().bypassNotice(), attempt, decision, null);
+            if (notice != null) notices.put(event.getPlayer().getUniqueId(), new Notice(notice));
             alert(active, active.messages().alertBypassed(), attempt, decision);
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void loginFinished(PlayerLoginEvent event) {
-        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) notices.remove(event.getPlayer());
+        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) notices.remove(event.getPlayer().getUniqueId());
     }
     @EventHandler public void join(PlayerJoinEvent event) {
-        String notice = notices.remove(event.getPlayer());
-        if (notice != null) event.getPlayer().sendMessage(notice);
+        Notice notice = notices.remove(event.getPlayer().getUniqueId());
+        if (notice != null) event.getPlayer().sendMessage(notice.text);
     }
-    @EventHandler public void quit(PlayerQuitEvent event) { notices.remove(event.getPlayer()); }
+    @EventHandler public void quit(PlayerQuitEvent event) { notices.remove(event.getPlayer().getUniqueId()); }
+    /** A login that drops before joining (for example during configuration) fires neither join nor quit. */
+    private void expireNotices() {
+        long now = System.currentTimeMillis();
+        notices.values().removeIf(notice -> now - notice.created > 600_000);
+    }
 
     private LoginAttempt attempt(OriginGateRuntime active, Player player, InetAddress address) {
         return new LoginAttempt(player.getName(), player.getUniqueId(), address, RuntimeController.permissions(active, player::hasPermission));
     }
     private static String key(String name, InetAddress address) { return name.toLowerCase(Locale.ROOT) + "/" + address.getHostAddress(); }
-    private String render(String template, LoginAttempt attempt, Decision decision) {
+    /** Returns {@code fallback} when the template cannot be rendered. */
+    private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
         try { return MessagesRenderer.legacy(template, attempt, decision); }
-        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return "You cannot join this server."; }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return fallback; }
     }
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
-        String message = render(template, attempt, decision);
+        String message = render(template, attempt, decision, null);
+        if (message == null) return;
         for (Player player : players()) {
             for (String permission : active.config().alertPermissions()) {
                 if (player.hasPermission(permission)) { player.sendMessage(message); break; }
@@ -187,6 +196,11 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         getServer().getScheduler().cancelTasks(this);
         pending.clear(); deferred.clear(); notices.clear(); preflightEvents.clear();
         if (controller != null) controller.stop(10_000);
+    }
+    private static final class Notice {
+        final String text;
+        final long created = System.currentTimeMillis();
+        Notice(String text) { this.text = text; }
     }
     private static final class Preflight {
         final OriginGateRuntime runtime;

@@ -77,11 +77,12 @@ public final class OriginGateBungee extends Plugin implements Listener {
                     if (result.dryRun() || !result.kicks()) admitted.add(player);
                     if (result.dryRun()) return;
                     if (result.kicks()) {
-                        player.disconnect(TextComponent.fromLegacyText(render(active.messages().kick(result.rule()), attempt, result)));
+                        player.disconnect(TextComponent.fromLegacyText(
+                                render(active.messages().kick(result.rule()), attempt, result, "You cannot join this server.")));
                         alert(active, active.messages().alertDenied(), attempt, result);
                     } else if (result.outcome() == Decision.Outcome.BYPASS) {
-                        if (!active.messages().bypassNotice().isEmpty())
-                            notices.put(player, render(active.messages().bypassNotice(), attempt, result));
+                        String notice = active.messages().bypassNotice().isEmpty() ? null : render(active.messages().bypassNotice(), attempt, result, null);
+                        if (notice != null) notices.put(player, notice);
                         alert(active, active.messages().alertBypassed(), attempt, result);
                     }
                 } finally { holds.remove(player, hold); hold.close(); }
@@ -125,13 +126,15 @@ public final class OriginGateBungee extends Plugin implements Listener {
         return new LoginAttempt(player.getName(), player.getUniqueId(), address,
                 RuntimeController.permissions(active, player::hasPermission));
     }
-    private String render(String template, LoginAttempt attempt, Decision decision) {
+    /** Returns {@code fallback} when the template cannot be rendered. */
+    private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
         try { return MessagesRenderer.legacy(template, attempt, decision); }
-        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return "You cannot join this server."; }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return fallback; }
     }
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
-        String message = render(template, attempt, decision);
+        String message = render(template, attempt, decision, null);
+        if (message == null) return;
         for (ProxiedPlayer player : getProxy().getPlayers()) {
             for (String permission : active.config().alertPermissions()) {
                 if (player.hasPermission(permission)) { player.sendMessage(TextComponent.fromLegacyText(message)); break; }
