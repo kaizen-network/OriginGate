@@ -50,6 +50,10 @@ public final class OriginGateVelocity {
                 if (cause == null) logger.warn(message);
                 else logger.warn(message, cause);
             }
+            @Override public void error(String message, Throwable cause) {
+                if (cause == null) logger.error(message);
+                else logger.error(message, cause);
+            }
             @Override public void debug(String message) { logger.info(message); }
         });
     }

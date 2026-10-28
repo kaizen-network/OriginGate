@@ -44,8 +44,8 @@ public final class RuntimeController implements AutoCloseable {
             return "OriginGate reloaded." + (next.config().dryRun() ? " Dry run is on: nobody is kicked." : "");
         } catch (Exception ex) {
             if (runtime == null) {
-                log.warn("OriginGate could not start and is NOT checking connections: " + Text.message(ex), ex);
-                log.warn("Fix the problem, then run: origingate reload", null);
+                log.error("OriginGate could not start and is NOT checking connections: " + Text.message(ex), ex);
+                log.error("Fix the problem, then run: origingate reload", null);
             } else {
                 log.warn("OriginGate reload failed: " + Text.message(ex), null);
             }
