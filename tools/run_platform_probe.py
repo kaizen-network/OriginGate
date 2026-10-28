@@ -115,7 +115,7 @@ public class RoutingProbe extends Plugin implements Listener {
         z.writestr('bungee.yml','name: RoutingProbe\nmain: RoutingProbe\nversion: 1\n')
 try:
     if kind in ('bukkit','paper'):
-        shutil.copy2(ROOT/'platform-bukkit/build/libs/OriginGate-Bukkit-0.1.0.jar',RUN/'plugins/OriginGate.jar')
+        shutil.copy2(ROOT/f'platform-bukkit/build/libs/OriginGate-Bukkit-{v.VERSION}.jar',RUN/'plugins/OriginGate.jar')
         shutil.copy2(args.server,RUN/'server.jar')
         (RUN/'server.properties').write_text(f'server-ip=127.0.0.1\nserver-port={PORT}\nonline-mode=false\nlevel-type=FLAT\nview-distance=3\nallow-nether=false\nspawn-monsters=false\nspawn-animals=false\ngenerate-structures=false\nsnooper-enabled=false\nmax-players=10\nnetwork-compression-threshold=-1\n')
         (RUN/'bukkit.yml').write_text('settings:\n  connection-throttle: -1\n  update-folder: update\nauto-updater:\n  enabled: false\n  on-broken: []\n  on-update: []\n')
@@ -128,7 +128,7 @@ try:
             (RUN/'plugins/bStats').mkdir(exist_ok=True)
             (RUN/'plugins/bStats/config.yml').write_text('enabled: false\n')
     else:
-        shutil.copy2(ROOT/'platform-bungeecord/build/libs/OriginGate-BungeeCord-0.1.0.jar',RUN/'plugins/OriginGate.jar')
+        shutil.copy2(ROOT/f'platform-bungeecord/build/libs/OriginGate-BungeeCord-{v.VERSION}.jar',RUN/'plugins/OriginGate.jar')
         shutil.copy2(args.server,RUN/'server.jar')
         (RUN/'config.yml').write_text(f'''online_mode: false
 ip_forward: false
