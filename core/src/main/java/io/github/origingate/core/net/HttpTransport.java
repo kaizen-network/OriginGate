@@ -7,20 +7,22 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Blocking I/O for worker threads, with total deadlines and no automatic redirects. */
+/**
+ * Blocking I/O for worker threads, with no automatic redirects. The request timeout covers name lookup, connecting,
+ * and the response, including a body that the handler reads in full. A body returned as a stream has no total
+ * deadline, only the timeout on each read, as with java.net.http. Exchanges run on their own threads, so the caller
+ * returns on time even when a socket call cannot be interrupted. A body read to the end keeps the connection for reuse.
+ */
 public final class HttpTransport implements AutoCloseable {
     public enum Redirect { NEVER }
     private final int connectMillis;
     private final Set<HttpURLConnection> active = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private final ScheduledThreadPoolExecutor timer = new ScheduledThreadPoolExecutor(1, task -> {
-        Thread thread = new Thread(task, "OriginGate HTTP Deadline"); thread.setDaemon(true); return thread;
+    private final ExecutorService exchanges = Executors.newCachedThreadPool(task -> {
+        Thread thread = new Thread(task, "OriginGate HTTP"); thread.setDaemon(true); return thread;
     });
     private HttpTransport(Duration connectTimeout) {
         connectMillis = (int) Math.min(Integer.MAX_VALUE, Math.max(1, connectTimeout.toMillis()));
-        timer.setRemoveOnCancelPolicy(true);
-        timer.setKeepAliveTime(1, TimeUnit.SECONDS);
-        timer.allowCoreThreadTimeOut(true);
     }
     public static HttpTransport newHttpClient() { return newBuilder().build(); }
     public static Builder newBuilder() { return new Builder(); }
@@ -36,61 +38,98 @@ public final class HttpTransport implements AutoCloseable {
         if (closed.get()) throw new IOException("HTTP transport is closed");
         final HttpURLConnection connection = (HttpURLConnection) request.uri.toURL().openConnection();
         final int wait = (int) Math.min(Integer.MAX_VALUE, Math.max(1, request.timeout.toMillis()));
-        final long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(wait);
         connection.setConnectTimeout(Math.min(connectMillis, wait));
         connection.setReadTimeout(wait);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(request.method);
         request.headers.forEach(connection::setRequestProperty);
         active.add(connection);
-        final ScheduledFuture<?> cancellation;
+        // Whoever sets this first owns the outcome: the exchange hands over its response, or the caller gives up.
+        final AtomicBoolean settled = new AtomicBoolean();
+        final Future<HttpResponse<T>> exchange;
         try {
-            cancellation = timer.schedule(connection::disconnect, wait, TimeUnit.MILLISECONDS);
+            exchange = exchanges.submit(() -> exchange(connection, handler, settled));
         } catch (RejectedExecutionException ex) {
-            active.remove(connection); connection.disconnect(); throw new IOException("HTTP transport is closed", ex);
+            disconnect(connection); throw new IOException("HTTP transport is closed", ex);
         }
-        boolean transferred = false;
         try {
+            return exchange.get(wait, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException ex) {
+            if (settled.compareAndSet(false, true)) { abandon(connection); throw new HttpTimeoutException("HTTP request timed out"); }
+            return handedOver(exchange);
+        } catch (InterruptedException ex) {
+            if (settled.compareAndSet(false, true)) abandon(connection);
+            else close(handedOver(exchange));
+            throw ex;
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof SocketTimeoutException) throw new HttpTimeoutException("HTTP request timed out");
+            if (cause instanceof IOException) throw (IOException) cause;
+            if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+            if (cause instanceof Error) throw (Error) cause;
+            throw new IOException(cause);
+        }
+    }
+    private <T> HttpResponse<T> exchange(HttpURLConnection connection, HttpResponse.BodyHandler<T> handler, AtomicBoolean settled)
+            throws IOException {
+        boolean handed = false;
+        try {
+            connection.connect();
+            if (settled.get()) throw new HttpTimeoutException("HTTP request timed out");
             int status = connection.getResponseCode();
             InputStream raw = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            if (raw == null) raw = new ByteArrayInputStream(new byte[0]);
-            InputStream stream = new FilterInputStream(raw) {
-                private boolean finished;
-                private void remaining() throws IOException {
-                    if (System.nanoTime() >= deadline) throw new HttpTimeoutException("HTTP request timed out");
-                    if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("HTTP request interrupted");
-                    long millis = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
-                    connection.setReadTimeout((int) Math.max(1, Math.min(wait, millis)));
-                }
-                @Override public int read() throws IOException { remaining(); return super.read(); }
-                @Override public int read(byte[] bytes, int off, int len) throws IOException { remaining(); return in.read(bytes, off, len); }
-                @Override public void close() throws IOException {
-                    if (finished) return;
-                    finished = true;
-                    cancellation.cancel(false);
-                    active.remove(connection);
-                    try { super.close(); } finally { connection.disconnect(); }
-                }
-            };
-            T body;
-            try { body = handler.read(stream); } catch (IOException | RuntimeException ex) { stream.close(); throw ex; }
-            transferred = body instanceof InputStream;
-            return new HttpResponse<>(status, body, connection.getHeaderFields());
-        } catch (SocketTimeoutException ex) {
-            throw new HttpTimeoutException("HTTP request timed out");
-        } catch (IOException ex) {
-            if (System.nanoTime() >= deadline) throw new HttpTimeoutException("HTTP request timed out");
-            throw ex;
-        } finally {
-            if (!transferred) {
-                cancellation.cancel(false); active.remove(connection); connection.disconnect();
+            T body = handler.read(new Body(raw == null ? new ByteArrayInputStream(new byte[0]) : raw, connection));
+            HttpResponse<T> response = new HttpResponse<>(status, body, connection.getHeaderFields());
+            if (!settled.compareAndSet(false, true)) {
+                close(response);
+                throw new HttpTimeoutException("HTTP request timed out");
             }
+            handed = true;
+            return response;
+        } finally {
+            if (!handed) disconnect(connection);
         }
+    }
+    /** The exchange settled first, so its result is about to be set. */
+    private static <T> HttpResponse<T> handedOver(Future<HttpResponse<T>> exchange) throws IOException {
+        boolean interrupted = false;
+        try {
+            while (true) {
+                try { return exchange.get(); }
+                catch (InterruptedException ex) { interrupted = true; }
+                catch (ExecutionException ex) { throw new IOException("HTTP request failed", ex.getCause()); }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+    }
+    private static void close(HttpResponse<?> response) throws IOException {
+        if (response.body() instanceof InputStream) ((InputStream) response.body()).close();
+    }
+    /** A disconnect can wait for a blocked read to return, so it never runs on the caller's thread. */
+    private void abandon(HttpURLConnection connection) {
+        try { exchanges.execute(() -> disconnect(connection)); }
+        catch (RejectedExecutionException ignored) { /* close() disconnects every active connection */ }
+    }
+    private void disconnect(HttpURLConnection connection) {
+        active.remove(connection);
+        try { connection.disconnect(); } catch (RuntimeException ignored) { /* a concurrent disconnect already closed it */ }
+    }
+    /** Closing hands the connection back to the JDK, which keeps it for reuse when the body was read to the end. */
+    private final class Body extends FilterInputStream {
+        private final HttpURLConnection connection;
+        Body(InputStream in, HttpURLConnection connection) { super(in); this.connection = connection; }
+        @Override public int read() throws IOException { checkInterrupt(); return super.read(); }
+        @Override public int read(byte[] bytes, int off, int len) throws IOException { checkInterrupt(); return in.read(bytes, off, len); }
+        private void checkInterrupt() throws IOException {
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("HTTP request interrupted");
+        }
+        @Override public void close() throws IOException { active.remove(connection); super.close(); }
     }
     public void shutdown() { close(); }
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
-        timer.shutdownNow();
+        exchanges.shutdownNow();
         for (HttpURLConnection connection : active) connection.disconnect();
         active.clear();
     }
