@@ -172,6 +172,9 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     boolean isClosed() { return closed; }
 
+    /** Refuses new lookups at once; {@link #close} still waits for the queued ones. */
+    void stopLookups() { workers.shutdown(); }
+
     /**
      * For reload: keeps this runtime working long enough for logins that already started with it
      * (up to {@code wait-millis} plus two requests), then closes it in the background.

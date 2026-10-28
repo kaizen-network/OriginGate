@@ -129,6 +129,9 @@ public final class RuntimeController implements AutoCloseable {
         OriginGateRuntime old = runtime;
         runtime = null;
         try {
+            // Every runtime stops taking lookups first, so closing waits for the slowest one rather than for each in turn.
+            if (old != null) old.stopLookups();
+            for (OriginGateRuntime replaced : retired) replaced.stopLookups();
             if (old != null) old.close();
             for (OriginGateRuntime replaced : retired) replaced.close();
             retired.clear();
