@@ -19,6 +19,17 @@ class DeferredAdmissionTest {
         assertEquals(1, calls.get());
     }
 
+    @Test void finishedLookupsMakeRoomWhenFull() {
+        DeferredAdmission<String> admission = new DeferredAdmission<>(1, Clock.systemUTC());
+        Object runtime = new Object();
+        CompletableFuture<String> abandoned = new CompletableFuture<>();
+        admission.poll("never-reconnects", runtime, () -> abandoned);
+        CompletableFuture<String> running = new CompletableFuture<>();
+        assertTrue(admission.poll("second", runtime, () -> running).isCompletedExceptionally(), "a running check keeps its slot");
+        abandoned.complete("result");
+        assertSame(running, admission.poll("second", runtime, () -> running));
+    }
+
     @Test void reloadDoesNotReusePreviousSettingsAndFailureSurvivesUntilReconnect() {
         DeferredAdmission<String> admission = new DeferredAdmission<>(2, Clock.systemUTC());
         CompletableFuture<String> stale = new CompletableFuture<>();

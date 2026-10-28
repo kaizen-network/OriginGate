@@ -20,6 +20,8 @@ final class DeferredAdmission<T> {
             return entry.future;
         }
         entries.remove(key);
+        // A finished lookup waits only for its player to reconnect; the lookup cache answers again if they do.
+        if (entries.size() >= capacity) entries.values().removeIf(e -> e.future.isDone());
         if (entries.size() >= capacity) {
             CompletableFuture<T> failed = new CompletableFuture<>();
             failed.completeExceptionally(new IllegalStateException("Too many connection checks are pending"));
