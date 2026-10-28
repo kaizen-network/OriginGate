@@ -12,6 +12,7 @@ import org.bukkit.event.player.*;
 import org.bukkit.permissions.Permission;
 import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.time.Clock;
 import java.util.*;
@@ -33,6 +34,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private volatile boolean preLoginSeen;
     private OriginGateRuntime declared;
     private boolean hexColors;
+    private Method onlinePlayers;
 
     @Override public void onEnable() {
         stopping = false;
@@ -216,7 +218,8 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     /** Bukkit changed this method's return type from an array to a collection. */
     private List<Player> players() {
         try {
-            Object value = getServer().getClass().getMethod("getOnlinePlayers").invoke(getServer());
+            if (onlinePlayers == null) onlinePlayers = getServer().getClass().getMethod("getOnlinePlayers");
+            Object value = onlinePlayers.invoke(getServer());
             if (value instanceof Player[]) return Arrays.asList((Player[]) value);
             List<Player> result = new ArrayList<>();
             for (Object player : (Collection<?>) value) result.add((Player) player);
