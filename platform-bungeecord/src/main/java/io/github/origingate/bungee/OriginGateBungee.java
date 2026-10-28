@@ -64,12 +64,23 @@ public final class OriginGateBungee extends Plugin implements Listener {
             admitted.add(player);
             return;
         }
-        LoginAttempt attempt = attempt(active, player, address);
+        LoginAttempt checked;
+        CompletableFuture<Decision> check;
+        try {
+            checked = attempt(active, player, address);
+            check = active.gate().check(checked);
+        } catch (RuntimeException ex) {
+            // An exception here would leave the player without a server, so it follows on-lookup-failure instead.
+            getLogger().warning("OriginGate could not check " + player.getName() + ": " + Text.message(ex));
+            checked = new LoginAttempt(player.getName(), player.getUniqueId(), address, permission -> false);
+            check = CompletableFuture.completedFuture(active.gate().finish(checked, null, ex));
+        }
+        LoginAttempt attempt = checked;
         event.registerIntent(this);
         LoginHold hold = new LoginHold(() -> event.completeIntent(this));
         holds.put(player, hold);
         try {
-            active.gate().check(attempt).whenComplete((decision, error) -> {
+            check.whenComplete((decision, error) -> {
                 try {
                     if (stopping || !hold.isOpen() || !player.isConnected()) return;
                     Decision result = error == null ? decision : active.gate().finish(attempt, null, error);
@@ -85,7 +96,12 @@ public final class OriginGateBungee extends Plugin implements Listener {
                         if (notice != null) notices.put(player, notice);
                         alert(active, active.messages().alertBypassed(), attempt, result);
                     }
-                } finally { holds.remove(player, hold); hold.close(); }
+                } finally {
+                    // A player who left after the check above may already be past disconnected().
+                    if (!player.isConnected()) { admitted.remove(player); notices.remove(player); }
+                    holds.remove(player, hold);
+                    hold.close();
+                }
             });
         } catch (RuntimeException ex) {
             holds.remove(player, hold);
