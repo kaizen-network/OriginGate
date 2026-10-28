@@ -30,9 +30,11 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private Commands commands;
     private volatile boolean stopping;
     private OriginGateRuntime declared;
+    private boolean hexColors;
 
     @Override public void onEnable() {
         stopping = false;
+        hexColors = ServerVersion.hexColors(getServer().getBukkitVersion());
         controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()));
         controller.reload();
         commands = new Commands(new Commands.Platform() {
@@ -181,7 +183,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private static String key(String name, InetAddress address) { return name.toLowerCase(Locale.ROOT) + "/" + Addresses.text(address); }
     /** Returns {@code fallback} when the template cannot be rendered. */
     private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
-        try { return MessagesRenderer.legacy(template, attempt, decision); }
+        try { return MessagesRenderer.legacy(MessagesRenderer.render(template, attempt, decision), hexColors); }
         catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return fallback; }
     }
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {

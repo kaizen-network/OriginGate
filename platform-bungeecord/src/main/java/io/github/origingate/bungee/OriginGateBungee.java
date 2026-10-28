@@ -3,7 +3,9 @@ package io.github.origingate.bungee;
 import io.github.origingate.core.*;
 import io.github.origingate.core.rules.*;
 import io.github.origingate.presentation.MessagesRenderer;
+import net.kyori.adventure.text.Component;
 import net.md_5.bungee.api.CommandSender;
+import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.event.*;
@@ -20,7 +22,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
     private final Map<ProxiedPlayer, LoginHold> holds = new ConcurrentHashMap<>();
     private final Set<ProxiedPlayer> admitted = ConcurrentHashMap.newKeySet();
     private final Map<ProxiedPlayer, net.md_5.bungee.api.config.ServerInfo> deferredRoutes = new ConcurrentHashMap<>();
-    private final Map<ProxiedPlayer, String> notices = new ConcurrentHashMap<>();
+    private final Map<ProxiedPlayer, Component> notices = new ConcurrentHashMap<>();
     private RuntimeController controller;
     private Commands commands;
     private volatile boolean stopping;
@@ -88,11 +90,11 @@ public final class OriginGateBungee extends Plugin implements Listener {
                     if (result.dryRun() || !result.kicks()) admitted.add(player);
                     if (result.dryRun()) return;
                     if (result.kicks()) {
-                        player.disconnect(TextComponent.fromLegacyText(
-                                render(active.messages().kick(result.rule()), attempt, result, "You cannot join this server.")));
+                        Component reason = render(active.messages().kick(result.rule()), attempt, result);
+                        player.disconnect(reason == null ? TextComponent.fromLegacyText("You cannot join this server.") : legacy(reason, player));
                         alert(active, active.messages().alertDenied(), attempt, result);
                     } else if (result.outcome() == Decision.Outcome.BYPASS) {
-                        String notice = active.messages().bypassNotice().isEmpty() ? null : render(active.messages().bypassNotice(), attempt, result, null);
+                        Component notice = active.messages().bypassNotice().isEmpty() ? null : render(active.messages().bypassNotice(), attempt, result);
                         if (notice != null) notices.put(player, notice);
                         alert(active, active.messages().alertBypassed(), attempt, result);
                     }
@@ -123,8 +125,8 @@ public final class OriginGateBungee extends Plugin implements Listener {
         if (deferred != null) event.setTarget(deferred);
     }
     @EventHandler public void connected(ServerConnectedEvent event) {
-        String notice = notices.remove(event.getPlayer());
-        if (notice != null) event.getPlayer().sendMessage(TextComponent.fromLegacyText(notice));
+        Component notice = notices.remove(event.getPlayer());
+        if (notice != null) event.getPlayer().sendMessage(legacy(notice, event.getPlayer()));
     }
     @EventHandler public void disconnected(PlayerDisconnectEvent event) {
         notices.remove(event.getPlayer());
@@ -142,18 +144,22 @@ public final class OriginGateBungee extends Plugin implements Listener {
         return new LoginAttempt(player.getName(), player.getUniqueId(), address,
                 RuntimeController.permissions(active, player::hasPermission));
     }
-    /** Returns {@code fallback} when the template cannot be rendered. */
-    private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
-        try { return MessagesRenderer.legacy(template, attempt, decision); }
-        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return fallback; }
+    /** Null when the template cannot be rendered. */
+    private Component render(String template, LoginAttempt attempt, Decision decision) {
+        try { return MessagesRenderer.render(template, attempt, decision); }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return null; }
+    }
+    /** BungeeCord sends hex colours as is, which clients before 1.16 (protocol 735) cannot show, so they get named colours. */
+    private static BaseComponent[] legacy(Component message, ProxiedPlayer player) {
+        return TextComponent.fromLegacyText(MessagesRenderer.legacy(message, player.getPendingConnection().getVersion() >= 735));
     }
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
-        String message = render(template, attempt, decision, null);
+        Component message = render(template, attempt, decision);
         if (message == null) return;
         for (ProxiedPlayer player : getProxy().getPlayers()) {
             for (String permission : active.config().alertPermissions()) {
-                if (player.hasPermission(permission)) { player.sendMessage(TextComponent.fromLegacyText(message)); break; }
+                if (player.hasPermission(permission)) { player.sendMessage(legacy(message, player)); break; }
             }
         }
     }

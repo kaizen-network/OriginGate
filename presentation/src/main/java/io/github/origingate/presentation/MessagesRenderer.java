@@ -10,9 +10,13 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import java.time.Instant;
 
 public final class MessagesRenderer {
+    /** Colours outside the 16 named ones as §x§r§r§g§g§b§b, which 1.16+ servers and clients understand. */
+    private static final LegacyComponentSerializer HEX = LegacyComponentSerializer.builder()
+            .character(LegacyComponentSerializer.SECTION_CHAR).hexColors().useUnusualXRepeatedCharacterHexFormat().build();
     private MessagesRenderer() { }
-    public static String legacy(String template, LoginAttempt attempt, Decision decision) {
-        return LegacyComponentSerializer.legacySection().serialize(render(template, attempt, decision));
+    /** Legacy text has no hover or click events. Without {@code hexColors}, colours become the nearest named one. */
+    public static String legacy(Component message, boolean hexColors) {
+        return (hexColors ? HEX : LegacyComponentSerializer.legacySection()).serialize(message);
     }
     public static Component render(String template, LoginAttempt attempt, Decision decision) {
         IpInfo info = decision.lookup() == null ? null : decision.lookup().info();

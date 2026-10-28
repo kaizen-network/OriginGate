@@ -8,6 +8,8 @@ order: 5
 
 `messages.yml` is in `plugins/origingate/`. Messages use [MiniMessage](https://docs.advntr.dev/minimessage/format.html). Run `origingate reload` after editing.
 
+Bukkit/Spigot/Paper and BungeeCord receive messages as legacy text, so hover and click events are only shown on Velocity. Hex colours and gradients work on 1.16+ servers (Bukkit) or for 1.16+ clients (BungeeCord); otherwise each colour becomes the nearest of the 16 named ones.
+
 | Key | When |
 | --- | --- |
 | `kick.deny-addresses`, `kick.vpn`, `kick.proxy`, `kick.country` | Kick screen for that rule |
