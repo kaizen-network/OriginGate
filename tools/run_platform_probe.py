@@ -176,7 +176,7 @@ permissions:
         with (RUN/'probe-console.log').open('w',encoding='utf8') as out:
             for line in process.stdout:lines.append(line);out.write(line);out.flush()
     threading.Thread(target=drain,daemon=True).start()
-    waitfor(ready,seconds=90);waitfor('OriginGate is running.')
+    waitfor(ready,seconds=90);waitfor('OriginGate is running with')
     case('clean connection')
     case('VPN denial before admission','vpn','kicked')
     if kind=='bungee':

@@ -1,5 +1,6 @@
 package io.github.origingate.core;
 
+import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.report.DecisionLine;
 import io.github.origingate.core.rules.*;
 import java.nio.file.Path;
@@ -39,18 +40,38 @@ public final class RuntimeController implements AutoCloseable {
             OriginGateRuntime old = runtime;
             runtime = next;
             if (old != null) old.retire();
-            log.info("OriginGate is running. Lookups: " + next.lookupSummary());
+            logStarted(next, old == null ? "OriginGate is running" : "OriginGate reloaded");
             return "OriginGate reloaded." + (next.config().dryRun() ? " Dry run is on: nobody is kicked." : "");
         } catch (Exception ex) {
-            log.warn("OriginGate reload failed: " + Text.message(ex), ex);
+            if (runtime == null) {
+                log.warn("OriginGate could not start and is NOT checking connections: " + Text.message(ex), ex);
+                log.warn("Fix the problem, then run: origingate reload", null);
+            } else {
+                log.warn("OriginGate reload failed: " + Text.message(ex), null);
+            }
             return "Reload failed, " + (runtime == null ? "OriginGate is not checking connections" : "the previous settings stay active")
                     + ": " + Text.message(ex);
+        }
+    }
+    private void logStarted(OriginGateRuntime next, String prefix) {
+        OriginGateConfig config = next.config();
+        log.info(prefix + " with " + config.storage().type() + " storage" + (config.dryRun() ? " in DRY-RUN mode (nobody is kicked)" : "") + ".");
+        log.info("Lookups: " + next.lookupSummary() + ".");
+        if (config.lookup().uses("proxycheck") && config.lookup().proxycheck().apiKeys().isEmpty()) {
+            log.warn("No proxycheck.io API keys are set; proxycheck.io allows 100 lookups per day without a key.", null);
         }
     }
     public void cleanup() {
         OriginGateRuntime active = runtime;
         if (active == null) return;
-        try { active.deleteExpired(); } catch (Exception ex) { log.warn("OriginGate cleanup failed", ex); }
+        try {
+            OriginGateRuntime.Cleanup cleanup = active.deleteExpired();
+            if (cleanup.rows() > 0 || cleanup.files() > 0) {
+                log.info("Deleted " + cleanup.rows() + " expired lookups and " + cleanup.files() + " old log files");
+            }
+        } catch (Exception ex) {
+            log.warn("Could not delete expired OriginGate data: " + Text.message(ex), null);
+        }
     }
     /** Decision logging never blocks platform events or the shared lookup deadline thread. */
     public void report(OriginGateRuntime active, LoginAttempt attempt, Decision decision) {
@@ -84,13 +105,22 @@ public final class RuntimeController implements AutoCloseable {
         for (String name : names) if (source.test(name)) granted.add(name);
         return granted::contains;
     }
-    /** Marks stopping immediately; platform event threads never wait for reload or I/O cleanup. */
-    public void closeAsync() {
+    /**
+     * Stops taking logins at once, then waits up to {@code waitMillis} for the runtime to close and queued log lines
+     * to be written. The JVM exit or plugin unload that follows would cut the close short. A reload in progress keeps
+     * the close waiting, and is not waited for beyond the limit.
+     */
+    public void stop(long waitMillis) {
         closed = true;
         reports.shutdown();
         Thread closer = new Thread(this::close, "OriginGate Shutdown");
         closer.setDaemon(true);
         closer.start();
+        try {
+            closer.join(waitMillis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
     }
     @Override public synchronized void close() {
         closed = true;

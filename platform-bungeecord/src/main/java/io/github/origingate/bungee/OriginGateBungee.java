@@ -162,6 +162,6 @@ public final class OriginGateBungee extends Plugin implements Listener {
             finally { hold.close(); }
         });
         holds.clear(); notices.clear(); admitted.clear(); deferredRoutes.clear();
-        if (controller != null) controller.closeAsync();
+        if (controller != null) controller.stop(10_000);
     }
 }

@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -75,7 +76,7 @@ class RuntimeControllerTest {
         });
     }
 
-    @Test void asyncCloseDoesNotWaitForReloadMonitorAndPreventsAnotherReload() throws Exception {
+    @Test void stopDoesNotWaitPastItsLimitForReloadMonitorAndPreventsAnotherReload() throws Exception {
         RuntimeController controller = new RuntimeController(directory, Log.NONE);
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -88,9 +89,46 @@ class RuntimeControllerTest {
         });
         reload.start();
         assertTrue(locked.await(2, TimeUnit.SECONDS));
-        try { assertTimeoutPreemptively(Duration.ofMillis(500), controller::closeAsync); }
+        try { assertTimeoutPreemptively(Duration.ofMillis(1000), () -> controller.stop(200)); }
         finally { release.countDown(); reload.join(2000); }
         assertEquals("OriginGate is stopping.", controller.reload());
         assertNull(controller.runtime());
+    }
+
+    @Test void stopClosesRuntimeAndWritesQueuedLogLinesBeforeReturning() throws Exception {
+        RuntimeController controller = new RuntimeController(directory, Log.NONE);
+        controller.reload();
+        OriginGateRuntime active = controller.runtime();
+        assertNotNull(active);
+        controller.report(active, attempt(), new Decision(Decision.Outcome.DENY, Rule.DENY_ADDRESSES, "blocked", null, false));
+        controller.stop(5000);
+        assertNull(controller.runtime());
+        assertTrue(Files.readString(directory.resolve("logs").resolve(LocalDate.now() + ".log")).contains("player=test-player"),
+                "A queued line must be written before the plugin is unloaded");
+    }
+
+    @Test void startupLogNamesDryRunAndMissingProxycheckKey() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Log log = new Log() {
+            @Override public void info(String message) { lines.add(message); }
+            @Override public void warn(String message, Throwable cause) { lines.add(message); }
+            @Override public void debug(String message) { }
+        };
+        OriginGateRuntime.installDefaults(directory);
+        Path config = directory.resolve("config.yml");
+        Files.writeString(config, Files.readString(config).replace("dry-run: false", "dry-run: true"));
+        try (RuntimeController controller = new RuntimeController(directory, log)) {
+            controller.reload();
+            assertTrue(lines.contains("OriginGate is running with sqlite storage in DRY-RUN mode (nobody is kicked)."), lines.toString());
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("No proxycheck.io API keys are set")), lines.toString());
+            Files.writeString(config, "config-version: 999\n");
+            controller.reload();
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("OriginGate reload failed: ")), lines.toString());
+        }
+        lines.clear();
+        try (RuntimeController controller = new RuntimeController(directory, log)) {
+            controller.reload();
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("OriginGate could not start and is NOT checking connections")), lines.toString());
+        }
     }
 }

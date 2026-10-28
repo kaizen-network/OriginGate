@@ -186,7 +186,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         stopping = true;
         getServer().getScheduler().cancelTasks(this);
         pending.clear(); deferred.clear(); notices.clear(); preflightEvents.clear();
-        if (controller != null) controller.closeAsync();
+        if (controller != null) controller.stop(10_000);
     }
     private static final class Preflight {
         final OriginGateRuntime runtime;
