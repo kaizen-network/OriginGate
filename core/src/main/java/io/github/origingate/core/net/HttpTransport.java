@@ -3,6 +3,8 @@ package io.github.origingate.core.net;
 import java.io.*;
 import java.net.*;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -127,10 +129,14 @@ public final class HttpTransport implements AutoCloseable {
         @Override public void close() throws IOException { active.remove(connection); super.close(); }
     }
     public void shutdown() { close(); }
+    /** Returns at once: disconnecting a stream that is being read waits for that read, for example a slow download. */
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
         exchanges.shutdownNow();
-        for (HttpURLConnection connection : active) connection.disconnect();
-        active.clear();
+        List<HttpURLConnection> open = new ArrayList<>(active);
+        if (open.isEmpty()) return;
+        Thread closer = new Thread(() -> open.forEach(this::disconnect), "OriginGate HTTP Close");
+        closer.setDaemon(true);
+        closer.start();
     }
 }

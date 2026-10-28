@@ -67,6 +67,22 @@ class HttpTransportTest {
         }
     }
 
+    @Test void closeDoesNotWaitForABlockedRead() throws Exception {
+        try (SlowServer server = new SlowServer(0, 3000)) {
+            HttpTransport http = HttpTransport.newHttpClient();
+            InputStream body = http.send(server.request(5000), HttpResponse.BodyHandlers.ofInputStream()).body();
+            assertEquals('x', body.read());
+            Thread reader = new Thread(() -> { try { body.read(); } catch (IOException ignored) { } });
+            reader.start();
+            Thread.sleep(200);
+            long start = System.nanoTime();
+            http.close();
+            long elapsed = Duration.ofNanos(System.nanoTime() - start).toMillis();
+            assertTrue(elapsed < 1000, "Closing must not wait for a stalled download, took " + elapsed + " ms");
+            reader.join(5000);
+        }
+    }
+
     /** Sends one byte after each delay, as a chunked body, and records each request's client address. */
     private static final class SlowServer implements AutoCloseable {
         final List<InetSocketAddress> clients = new CopyOnWriteArrayList<>();
