@@ -93,7 +93,7 @@ class MaxMindUpdaterTest {
     }
 
     private MaxMindUpdater updater(String edition, String licenseKey) {
-        return new MaxMindUpdater(HttpTransport.newBuilder().followRedirects(HttpTransport.Redirect.NEVER).build(),
+        return new MaxMindUpdater(HttpTransport.newHttpClient(),
                 server.uri("/geoip/databases/"), edition, 123456, licenseKey, provider, file(), Log.NONE,
                 "OriginGate/test");
     }

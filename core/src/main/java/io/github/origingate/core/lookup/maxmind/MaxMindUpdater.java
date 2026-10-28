@@ -141,7 +141,7 @@ public final class MaxMindUpdater {
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
                 .timeout(TIMEOUT)
                 .header("User-Agent", userAgent)
-                .method(method, HttpRequest.BodyPublishers.noBody());
+                .method(method);
         if (withCredentials) request.header("Authorization", authorization);
         try {
             return http.send(request.build(), handler);

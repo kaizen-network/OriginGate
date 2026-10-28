@@ -85,7 +85,6 @@ public final class OriginGateRuntime implements AutoCloseable {
         }
         HttpTransport http = HttpTransport.newBuilder()
                 .connectTimeout(Duration.ofMillis(config.lookup().waitMillis()))
-                .followRedirects(HttpTransport.Redirect.NEVER)
                 .build();
         ThreadPoolExecutor workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(QUEUE), threads(), new ThreadPoolExecutor.AbortPolicy());
@@ -206,7 +205,7 @@ public final class OriginGateRuntime implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
         providers.close();
-        http.shutdown();
+        http.close();
         storage.close();
     }
 }

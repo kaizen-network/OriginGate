@@ -31,14 +31,11 @@ public final class HttpRequest {
         }
         public Builder header(String name, String value) { headers.put(name, value); return this; }
         public Builder GET() { method = "GET"; return this; }
-        public Builder method(String value, Object ignored) {
+        /** GET or HEAD: requests have no body. */
+        public Builder method(String value) {
             if (!"GET".equals(value) && !"HEAD".equals(value)) throw new IllegalArgumentException("Unsupported HTTP method");
             method = value; return this;
         }
         public HttpRequest build() { return new HttpRequest(this); }
-    }
-    public static final class BodyPublishers {
-        private BodyPublishers() { }
-        public static Object noBody() { return null; }
     }
 }

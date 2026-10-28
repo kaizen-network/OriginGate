@@ -16,7 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * returns on time even when a socket call cannot be interrupted. A body read to the end keeps the connection for reuse.
  */
 public final class HttpTransport implements AutoCloseable {
-    public enum Redirect { NEVER }
     private final int connectMillis;
     private final Set<HttpURLConnection> active = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -31,7 +30,6 @@ public final class HttpTransport implements AutoCloseable {
     public static final class Builder {
         private Duration timeout = Duration.ofSeconds(10);
         public Builder connectTimeout(Duration value) { timeout = value; return this; }
-        public Builder followRedirects(Redirect ignored) { return this; }
         public HttpTransport build() { return new HttpTransport(timeout); }
     }
     public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler)
@@ -128,7 +126,6 @@ public final class HttpTransport implements AutoCloseable {
         }
         @Override public void close() throws IOException { active.remove(connection); super.close(); }
     }
-    public void shutdown() { close(); }
     /** Returns at once: disconnecting a stream that is being read waits for that read, for example a slow download. */
     @Override public void close() {
         if (!closed.compareAndSet(false, true)) return;
