@@ -23,6 +23,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private final DeferredAdmission<LookupService.Result> deferred = new DeferredAdmission<>(512, Clock.systemUTC());
     private final Map<UUID, Notice> notices = new ConcurrentHashMap<>();
     private final Map<AsyncPlayerPreLoginEvent, Preflight> preflightEvents = new ConcurrentHashMap<>();
+    private final Map<PlayerLoginEvent, Optional<Preflight>> refused = new ConcurrentHashMap<>();
     private RuntimeController controller;
     private Commands commands;
     private volatile boolean stopping;
@@ -89,31 +90,35 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     public void login(PlayerLoginEvent event) {
         if (stopping) return;
         Preflight flight = pending.take(key(event.getPlayer().getName(), event.getAddress()));
-        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) return;
+        // Another plugin may still allow a refused login (for example for a reserved slot), so it is checked at MONITOR.
+        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) refused.put(event, Optional.ofNullable(flight));
+        else check(event, flight);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void loginFinished(PlayerLoginEvent event) {
+        Optional<Preflight> flight = refused.remove(event);
+        if (flight != null && !stopping && event.getResult() == PlayerLoginEvent.Result.ALLOWED) check(event, flight.orElse(null));
+        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) notices.remove(event.getPlayer().getUniqueId());
+    }
+
+    private void check(PlayerLoginEvent event, Preflight flight) {
         notices.remove(event.getPlayer().getUniqueId());
         OriginGateRuntime active = flight == null ? controller.runtime() : flight.runtime;
         if (active == null) return;
-        LoginAttempt attempt = attempt(active, event.getPlayer(), event.getAddress());
+        LoginAttempt attempt;
         Decision decision;
-        if (flight == null && !active.gate().beforeLookup(attempt).isPresent()) {
-            // Nobody waits here, so wait-millis does not apply: a late answer is still used when the player reconnects.
-            CompletableFuture<LookupService.Result> lookup = deferred.poll(key(attempt.username(), attempt.address()), active,
-                    () -> active.gate().lookups().lookup(Addresses.text(attempt.address()), false));
-            if (!lookup.isDone()) {
-                if (active.config().dryRun()) {
-                    lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
-                } else {
-                    event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "Your connection is being checked. Please reconnect in a moment.");
-                }
-                return;
-            }
-            try { decision = active.gate().finish(attempt, lookup.join(), null); }
-            catch (CompletionException ex) { decision = active.gate().finish(attempt, null, ex); }
-        } else {
-            decision = active.gate().finish(attempt, flight == null ? null : flight.result, flight == null ? null : flight.failure);
+        try {
+            attempt = attempt(active, event.getPlayer(), event.getAddress());
+            decision = decide(event, active, flight, attempt);
+        } catch (RuntimeException ex) {
+            // An exception leaving the handler would let the player in, so it follows on-lookup-failure instead.
+            getLogger().warning("OriginGate could not check " + event.getPlayer().getName() + ": " + Text.message(ex));
+            attempt = new LoginAttempt(event.getPlayer().getName(), event.getPlayer().getUniqueId(), event.getAddress(), permission -> false);
+            decision = active.gate().finish(attempt, null, ex);
         }
-        final Decision reported = decision;
-        background(() -> controller.report(active, attempt, reported));
+        if (decision == null) return;
+        controller.report(active, attempt, decision);
         if (decision.dryRun()) return;
         if (decision.kicks()) {
             event.disallow(PlayerLoginEvent.Result.KICK_OTHER,
@@ -126,10 +131,25 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         }
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void loginFinished(PlayerLoginEvent event) {
-        if (event.getResult() != PlayerLoginEvent.Result.ALLOWED) notices.remove(event.getPlayer().getUniqueId());
+    /** Null when the reconnect fallback has already handled the login. */
+    private Decision decide(PlayerLoginEvent event, OriginGateRuntime active, Preflight flight, LoginAttempt attempt) {
+        if (flight != null || active.gate().beforeLookup(attempt).isPresent())
+            return active.gate().finish(attempt, flight == null ? null : flight.result, flight == null ? null : flight.failure);
+        // Nobody waits here, so wait-millis does not apply: a late answer is still used when the player reconnects.
+        CompletableFuture<LookupService.Result> lookup = deferred.poll(key(attempt.username(), attempt.address()), active,
+                () -> active.gate().lookups().lookup(Addresses.text(attempt.address()), false));
+        if (!lookup.isDone()) {
+            if (active.config().dryRun()) {
+                lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
+            } else {
+                event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "Your connection is being checked. Please reconnect in a moment.");
+            }
+            return null;
+        }
+        try { return active.gate().finish(attempt, lookup.join(), null); }
+        catch (CompletionException ex) { return active.gate().finish(attempt, null, ex); }
     }
+
     @EventHandler public void join(PlayerJoinEvent event) {
         Notice notice = notices.remove(event.getPlayer().getUniqueId());
         if (notice != null) event.getPlayer().sendMessage(notice.text);
@@ -203,7 +223,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     @Override public void onDisable() {
         stopping = true;
         getServer().getScheduler().cancelTasks(this);
-        pending.clear(); deferred.clear(); notices.clear(); preflightEvents.clear();
+        pending.clear(); deferred.clear(); notices.clear(); preflightEvents.clear(); refused.clear();
         if (controller != null) controller.stop(10_000);
     }
     private static final class Notice {
