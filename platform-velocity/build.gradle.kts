@@ -30,6 +30,8 @@ tasks.shadowJar {
     relocate("org.yaml.snakeyaml", "io.github.origingate.internal.snakeyaml")
     relocate("org.mariadb.jdbc", "io.github.origingate.internal.mariadb")
     relocate("com.google.gson", "io.github.origingate.internal.gson")
+    // Velocity supplies Adventure and MiniMessage; a bundled copy could mix with the proxy's version.
+    dependencies { exclude(dependency("net.kyori:.*")) }
     // maxmind-db ships a root module descriptor; the plugin is loaded from the class path, so it is not needed.
     exclude("module-info.class")
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")

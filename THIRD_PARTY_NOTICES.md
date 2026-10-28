@@ -9,7 +9,7 @@ OriginGate is GPL-3.0-only. Bundled dependencies keep the licenses below. Their 
 | MariaDB Connector/J | 3.5.10 | LGPL-2.1-or-later | Relocated to `io.github.origingate.internal.mariadb` |
 | MaxMind DB Reader | 4.2.0 and 2.1.0 | Apache-2.0 | Isolated as `io.github.origingate.internal.maxmind17` and `io.github.origingate.internal.maxmind8`; Java 17+ uses 4.2.0, older Java uses 2.1.0 |
 | Gson | 2.10.1 | Apache-2.0 | Relocated to `io.github.origingate.internal.gson` |
-| Adventure, MiniMessage, legacy serializer, examination | 4.26.1 / 1.3.0 | MIT | Bukkit/BungeeCord relocate `net.kyori` to `io.github.origingate.internal.kyori` |
+| Adventure, MiniMessage, legacy serializer, examination | 4.26.1 / 1.3.0 | MIT | Bukkit/BungeeCord relocate `net.kyori` to `io.github.origingate.internal.kyori`; Velocity supplies its own |
 | SLF4J API and JUL binding | 2.0.17 | MIT | Bukkit/BungeeCord relocate to `io.github.origingate.internal.slf4j`; Velocity supplies its own binding |
 
 Relocation changes package names in bytecode and service descriptors. OriginGate does not edit these libraries' upstream Java sources. The Gradle scripts describe the changes. You can rebuild the project with a modified dependency and replace the resulting JAR; nothing prevents replacement.
