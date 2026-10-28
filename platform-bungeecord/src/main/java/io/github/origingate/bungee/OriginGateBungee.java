@@ -10,6 +10,8 @@ import net.md_5.bungee.api.event.*;
 import net.md_5.bungee.api.plugin.*;
 import net.md_5.bungee.event.*;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -23,6 +25,11 @@ public final class OriginGateBungee extends Plugin implements Listener {
     private Commands commands;
     private volatile boolean stopping;
     @Override public void onEnable() {
+        // On older proxies registerIntent does not exist, and every login would fail before admission.
+        if (!AsyncEvent.class.isAssignableFrom(PostLoginEvent.class)) {
+            getLogger().severe("OriginGate needs BungeeCord 1.21-R0.4 or newer (asynchronous PostLoginEvent) and is NOT checking connections.");
+            return;
+        }
         controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()));
         controller.reload();
         commands = new Commands(new Commands.Platform() {
@@ -30,7 +37,8 @@ public final class OriginGateBungee extends Plugin implements Listener {
             @Override public Optional<LoginAttempt> onlinePlayer(String name) {
                 ProxiedPlayer player = getProxy().getPlayer(name);
                 OriginGateRuntime active = controller.runtime();
-                return player == null || active == null ? Optional.empty() : Optional.of(attempt(active, player));
+                InetAddress address = player == null ? null : address(player);
+                return address == null || active == null ? Optional.empty() : Optional.of(attempt(active, player, address));
             }
             @Override public List<String> onlinePlayerNames() {
                 List<String> names = new ArrayList<>();
@@ -46,11 +54,17 @@ public final class OriginGateBungee extends Plugin implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void login(PostLoginEvent event) {
         OriginGateRuntime active = controller.runtime();
-        if (stopping || active == null) return;
         ProxiedPlayer player = event.getPlayer();
-        LoginAttempt attempt;
-        try { attempt = attempt(active, player); }
-        catch (RuntimeException ex) { getLogger().warning("No IP address for " + player.getName()); return; }
+        if (stopping) return;
+        // An unchecked player is admitted, as on Velocity; connecting() would otherwise hold them with no server.
+        if (active == null) { admitted.add(player); return; }
+        InetAddress address = address(player);
+        if (address == null) {
+            getLogger().warning("No IP address for " + player.getName() + ", not checked");
+            admitted.add(player);
+            return;
+        }
+        LoginAttempt attempt = attempt(active, player, address);
         event.registerIntent(this);
         LoginHold hold = new LoginHold(() -> event.completeIntent(this));
         holds.put(player, hold);
@@ -102,8 +116,12 @@ public final class OriginGateBungee extends Plugin implements Listener {
         LoginHold hold = holds.remove(event.getPlayer());
         if (hold != null) hold.close();
     }
-    private LoginAttempt attempt(OriginGateRuntime active, ProxiedPlayer player) {
-        InetAddress address = player.getAddress().getAddress();
+    /** Null for a connection without an IP address, such as a Unix domain socket listener. */
+    private static InetAddress address(ProxiedPlayer player) {
+        SocketAddress remote = player.getSocketAddress();
+        return remote instanceof InetSocketAddress ? ((InetSocketAddress) remote).getAddress() : null;
+    }
+    private LoginAttempt attempt(OriginGateRuntime active, ProxiedPlayer player, InetAddress address) {
         return new LoginAttempt(player.getName(), player.getUniqueId(), address,
                 RuntimeController.permissions(active, player::hasPermission));
     }

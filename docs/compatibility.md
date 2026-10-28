@@ -32,7 +32,7 @@ MySQL and MariaDB storage has an automated test, but it has not yet been run aga
 
 ## Platforms
 
-Use the Bukkit JAR for Bukkit, Spigot, and Paper. It compiles against the Bukkit 1.7.2 API and targets Java 8. This does not mean every historical server build has been tested. Folia is not supported. BungeeCord needs the asynchronous `PostLoginEvent` available in API 1.21-R0.4 or newer; historical BungeeCord builds are not supported.
+Use the Bukkit JAR for Bukkit, Spigot, and Paper. It compiles against the Bukkit 1.7.2 API and targets Java 8. This does not mean every historical server build has been tested. Folia is not supported. BungeeCord needs the asynchronous `PostLoginEvent` available in API 1.21-R0.4 or newer; historical BungeeCord builds are not supported. On an older proxy, OriginGate logs an error at startup and does not check connections.
 
 On Bukkit, lookup work runs during asynchronous pre-login. UUID and permission bypasses are checked again at `PlayerLoginEvent`, so a lookup may already have happened before those bypasses are known. Configure permission plugins to supply permissions by that event. OriginGate preserves earlier plugin denials.
 
