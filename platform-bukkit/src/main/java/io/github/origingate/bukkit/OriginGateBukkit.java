@@ -2,6 +2,7 @@ package io.github.origingate.bukkit;
 
 import io.github.origingate.core.*;
 import io.github.origingate.core.lookup.LookupService;
+import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.*;
 import io.github.origingate.presentation.MessagesRenderer;
 import org.bukkit.command.*;
@@ -64,7 +65,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         LoginAttempt initial = new LoginAttempt(event.getName(), null, event.getAddress(), permission -> false);
         try {
             if (!active.gate().beforeLookup(initial).isPresent()) {
-                flight.result = active.gate().lookups().lookup(event.getAddress().getHostAddress(), false)
+                flight.result = active.gate().lookups().lookup(Addresses.text(event.getAddress()), false)
                         .get(active.config().lookup().waitMillis(), TimeUnit.MILLISECONDS);
             }
         } catch (Exception ex) {
@@ -95,7 +96,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         if (flight == null && !active.gate().beforeLookup(attempt).isPresent()) {
             // Nobody waits here, so wait-millis does not apply: a late answer is still used when the player reconnects.
             CompletableFuture<LookupService.Result> lookup = deferred.poll(key(attempt.username(), attempt.address()), active,
-                    () -> active.gate().lookups().lookup(attempt.address().getHostAddress(), false));
+                    () -> active.gate().lookups().lookup(Addresses.text(attempt.address()), false));
             if (!lookup.isDone()) {
                 if (active.config().dryRun()) {
                     lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
@@ -141,7 +142,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private LoginAttempt attempt(OriginGateRuntime active, Player player, InetAddress address) {
         return new LoginAttempt(player.getName(), player.getUniqueId(), address, RuntimeController.permissions(active, player::hasPermission));
     }
-    private static String key(String name, InetAddress address) { return name.toLowerCase(Locale.ROOT) + "/" + address.getHostAddress(); }
+    private static String key(String name, InetAddress address) { return name.toLowerCase(Locale.ROOT) + "/" + Addresses.text(address); }
     /** Returns {@code fallback} when the template cannot be rendered. */
     private String render(String template, LoginAttempt attempt, Decision decision, String fallback) {
         try { return MessagesRenderer.legacy(template, attempt, decision); }
