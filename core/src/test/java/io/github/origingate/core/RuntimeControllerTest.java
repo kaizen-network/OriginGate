@@ -107,6 +107,16 @@ class RuntimeControllerTest {
                 "A queued line must be written before the plugin is unloaded");
     }
 
+    @Test void stopAlsoClosesRuntimeReplacedByRecentReload() throws Exception {
+        RuntimeController controller = new RuntimeController(directory, Log.NONE);
+        controller.reload();
+        OriginGateRuntime replaced = controller.runtime();
+        controller.reload();
+        assertFalse(replaced.isClosed(), "a replaced runtime keeps serving logins that started with it");
+        controller.stop(5000);
+        assertTrue(replaced.isClosed(), "stopping must not leave it to a background thread that may never finish");
+    }
+
     @Test void startupLogNamesDryRunAndMissingProxycheckKey() throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
         Log log = new Log() {

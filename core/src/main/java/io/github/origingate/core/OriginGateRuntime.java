@@ -41,6 +41,7 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final Gate gate;
     private final DecisionFile decisionFile;
     private final Clock clock;
+    private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
@@ -169,6 +170,8 @@ public final class OriginGateRuntime implements AutoCloseable {
     /** Null when {@code log-file: false}. */
     public DecisionFile decisionFile() { return decisionFile; }
 
+    boolean isClosed() { return closed; }
+
     /**
      * For reload: keeps this runtime working long enough for logins that already started with it
      * (up to {@code wait-millis} plus two requests), then closes it in the background.
@@ -188,8 +191,10 @@ public final class OriginGateRuntime implements AutoCloseable {
         closer.start();
     }
 
-    /** Stops taking lookups, lets queued ones finish, then closes the HTTP client. */
-    @Override public void close() {
+    /** Stops taking lookups, lets queued ones finish, then closes the HTTP client. A second call waits for the first. */
+    @Override public synchronized void close() {
+        if (closed) return;
+        closed = true;
         workers.shutdown();
         try {
             // The HTTP client refuses new requests once shut down, so wait for queued lookups first.

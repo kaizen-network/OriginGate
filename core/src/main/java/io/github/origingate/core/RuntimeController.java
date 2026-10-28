@@ -21,6 +21,8 @@ public final class RuntimeController implements AutoCloseable {
                 return thread;
             }, new ThreadPoolExecutor.AbortPolicy());
     private volatile OriginGateRuntime runtime;
+    /** Runtimes replaced by a reload that may still be closing; stopping closes them too. Guarded by this. */
+    private final List<OriginGateRuntime> retired = new ArrayList<>();
     private volatile boolean closed;
     public RuntimeController(Path directory, Log log) {
         this.directory = directory;
@@ -39,7 +41,11 @@ public final class RuntimeController implements AutoCloseable {
             }
             OriginGateRuntime old = runtime;
             runtime = next;
-            if (old != null) old.retire();
+            if (old != null) {
+                retired.removeIf(OriginGateRuntime::isClosed);
+                retired.add(old);
+                old.retire();
+            }
             logStarted(next, old == null ? "OriginGate is running" : "OriginGate reloaded");
             return "OriginGate reloaded." + (next.config().dryRun() ? " Dry run is on: nobody is kicked." : "");
         } catch (Exception ex) {
@@ -129,6 +135,8 @@ public final class RuntimeController implements AutoCloseable {
         runtime = null;
         try {
             if (old != null) old.close();
+            for (OriginGateRuntime replaced : retired) replaced.close();
+            retired.clear();
         } finally {
             try {
                 if (!reports.awaitTermination(5, TimeUnit.SECONDS)) reports.shutdownNow();
