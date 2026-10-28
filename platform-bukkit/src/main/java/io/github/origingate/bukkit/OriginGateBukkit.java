@@ -17,6 +17,8 @@ import java.util.concurrent.*;
 
 /** Bukkit APIs shared by legacy CraftBukkit, Spigot, and Paper. */
 public final class OriginGateBukkit extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    /** Set while Bukkit runs a command, so replies reach senders that only collect output meanwhile (RCON). */
+    private static final ThreadLocal<Boolean> DISPATCHING = new ThreadLocal<>();
     private final PendingAdmissions<Preflight> pending = new PendingAdmissions<>(512, Clock.systemUTC());
     private final DeferredAdmission<LookupService.Result> deferred = new DeferredAdmission<>(512, Clock.systemUTC());
     private final Map<UUID, Notice> notices = new ConcurrentHashMap<>();
@@ -175,6 +177,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         return new Commands.Sender() {
             @Override public boolean hasPermission(String permission) { return permissions.contains(permission); }
             @Override public void reply(String line) {
+                if (Boolean.TRUE.equals(DISPATCHING.get())) { sender.sendMessage(line); return; }
                 if (stopping) return;
                 getServer().getScheduler().runTask(OriginGateBukkit.this, () -> sender.sendMessage(line));
             }
@@ -185,8 +188,13 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     }
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         Commands.Sender source = sender(sender);
-        if (args.length > 0 && args[0].equalsIgnoreCase("reload")) background(() -> commands.execute(args, source));
-        else commands.execute(args, source);
+        DISPATCHING.set(true);
+        try {
+            if (args.length > 0 && args[0].equalsIgnoreCase("reload")) background(() -> commands.execute(args, source));
+            else commands.execute(args, source);
+        } finally {
+            DISPATCHING.remove();
+        }
         return true;
     }
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
