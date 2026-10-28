@@ -41,6 +41,8 @@ class VelocityArtifactTest {
             assertTrue(jar.getEntry("module-info.class") == null, "no root module descriptor");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/google/gson/")), "Gson is isolated");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("net/kyori/")), "Adventure comes from the proxy");
+            assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("io/github/origingate/internal/maxmind8/")),
+                    "the Java 8 MaxMind reader is not shipped for Java 21");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("io/github/origingate/probe/")), "probe plugin is not shipped");
             assertFalse(jar.stream().anyMatch(e -> e.getName().startsWith("com/velocitypowered/")));
         }
