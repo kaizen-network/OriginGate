@@ -1,6 +1,8 @@
 package io.github.origingate.core.util;
 
 import org.junit.jupiter.api.Test;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -29,6 +31,27 @@ class FuturesTest {
         } finally {
             release.countDown();
         }
+    }
+    @Test void burstOfTimeoutsSharesAFewThreads() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch busy = new CountDownLatch(4);
+        List<CompletableFuture<Object>> timeouts = new ArrayList<>();
+        try {
+            for (int i = 0; i < 20; i++) {
+                timeouts.add(Futures.timeout(new CompletableFuture<>(), 50, TimeUnit.MILLISECONDS).handle((value, error) -> {
+                    busy.countDown();
+                    try { release.await(5, TimeUnit.SECONDS); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+                    return null;
+                }));
+            }
+            assertTrue(busy.await(2, TimeUnit.SECONDS));
+            Thread.sleep(200);
+            long threads = Thread.getAllStackTraces().keySet().stream().filter(t -> t.getName().equals("OriginGate Timeouts")).count();
+            assertTrue(threads <= 4, "A burst of timeouts must not start a thread each, saw " + threads);
+        } finally {
+            release.countDown();
+        }
+        for (CompletableFuture<Object> timeout : timeouts) timeout.get(5, TimeUnit.SECONDS);
     }
     @Test void cancelledCopyDoesNotCancelSource() throws Exception {
         CompletableFuture<String> source = new CompletableFuture<>();
