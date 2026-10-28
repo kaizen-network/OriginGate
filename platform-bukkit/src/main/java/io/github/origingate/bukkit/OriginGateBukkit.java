@@ -29,6 +29,8 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private RuntimeController controller;
     private Commands commands;
     private volatile boolean stopping;
+    /** Old offline-mode CraftBukkit never fires it; then a login without a prefetched result is asked to reconnect. */
+    private volatile boolean preLoginSeen;
     private OriginGateRuntime declared;
     private boolean hexColors;
 
@@ -61,6 +63,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void preLogin(AsyncPlayerPreLoginEvent event) {
+        preLoginSeen = true;
         OriginGateRuntime active = controller.runtime();
         if (stopping || active == null || event.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) return;
         String key = key(event.getName(), event.getAddress());
@@ -140,17 +143,31 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private Decision decide(PlayerLoginEvent event, OriginGateRuntime active, Preflight flight, LoginAttempt attempt) {
         if (flight != null || active.gate().beforeLookup(attempt).isPresent())
             return active.gate().finish(attempt, flight == null ? null : flight.result, flight == null ? null : flight.failure);
+        String ip = Addresses.text(attempt.address());
+        if (preLoginSeen) {
+            // The prefetched result was dropped (every slot was in use), so only a cached answer avoids on-lookup-failure.
+            CompletableFuture<LookupService.Result> lookup = active.gate().lookups().lookup(ip, false);
+            if (!lookup.isDone()) return active.gate().finish(attempt, null, new IllegalStateException("too many connections were being checked"));
+            return finished(active, attempt, lookup);
+        }
         // Nobody waits here, so wait-millis does not apply: a late answer is still used when the player reconnects.
+        boolean[] started = {false};
         CompletableFuture<LookupService.Result> lookup = deferred.poll(key(attempt.username(), attempt.address()), active,
-                () -> active.gate().lookups().lookup(Addresses.text(attempt.address()), false));
+                () -> { started[0] = true; return active.gate().lookups().lookup(ip, false); });
         if (!lookup.isDone()) {
             if (active.config().dryRun()) {
-                lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
+                // Reported once per lookup, however often the player reconnects while it runs.
+                if (started[0]) lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
             } else {
                 event.disallow(PlayerLoginEvent.Result.KICK_OTHER, "Your connection is being checked. Please reconnect in a moment.");
+                controller.report(active, attempt, new Decision(Decision.Outcome.DENY, Rule.LOOKUP_FAILURE,
+                        "lookup still running, asked to reconnect", null, false));
             }
             return null;
         }
+        return finished(active, attempt, lookup);
+    }
+    private static Decision finished(OriginGateRuntime active, LoginAttempt attempt, CompletableFuture<LookupService.Result> lookup) {
         try { return active.gate().finish(attempt, lookup.join(), null); }
         catch (CompletionException ex) { return active.gate().finish(attempt, null, ex); }
     }
