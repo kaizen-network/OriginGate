@@ -92,10 +92,9 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         LoginAttempt attempt = attempt(active, event.getPlayer(), event.getAddress());
         Decision decision;
         if (flight == null && !active.gate().beforeLookup(attempt).isPresent()) {
+            // Nobody waits here, so wait-millis does not apply: a late answer is still used when the player reconnects.
             CompletableFuture<LookupService.Result> lookup = deferred.poll(key(attempt.username(), attempt.address()), active,
-                    () -> io.github.origingate.core.util.Futures.timeout(
-                            active.gate().lookups().lookup(attempt.address().getHostAddress(), false),
-                            active.config().lookup().waitMillis(), TimeUnit.MILLISECONDS));
+                    () -> active.gate().lookups().lookup(attempt.address().getHostAddress(), false));
             if (!lookup.isDone()) {
                 if (active.config().dryRun()) {
                     lookup.whenComplete((result, error) -> controller.report(active, attempt, active.gate().finish(attempt, result, error)));
