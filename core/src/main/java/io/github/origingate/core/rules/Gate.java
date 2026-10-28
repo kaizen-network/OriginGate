@@ -51,7 +51,7 @@ public final class Gate {
             return CompletableFuture.completedFuture(failed(attempt, ex));
         }
         return io.github.origingate.core.util.Futures.timeout(lookup, config.lookup().waitMillis(), TimeUnit.MILLISECONDS)
-                .handle((result, error) -> finish(attempt, result, error));
+                .handle((result, error) -> decide(attempt, result, error));
     }
 
     /** Final identity and permissions are checked even when an earlier lookup failed. */
@@ -59,6 +59,15 @@ public final class Gate {
         try {
             Optional<Decision> early = beforeLookup(attempt);
             if (early.isPresent()) return early.get();
+        } catch (RuntimeException ex) {
+            return failed(attempt, ex);
+        }
+        return decide(attempt, result, error);
+    }
+
+    /** For an attempt that {@link #beforeLookup} has already let through to the lookup. */
+    private Decision decide(LoginAttempt attempt, LookupService.Result result, Throwable error) {
+        try {
             if (error != null) return failed(attempt, error);
             if (result == null) return failed(attempt, new IllegalStateException("No lookup result"));
             return afterLookup(attempt, result);
