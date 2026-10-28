@@ -66,4 +66,4 @@ Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`. `source` is `memory`, `storage`
 
 `log-file: true` writes the same lines as `matches` to `plugins/origingate/logs/<date>.log`, whatever the console level is. Files older than `log-file-keep-days` are deleted.
 
-On Bukkit and BungeeCord, decision logs use a limited background queue so slow writes do not delay connection checks. If that queue fills, excess entries are skipped and a warning is logged when writing resumes.
+Decision logs use a limited background queue so slow writes do not delay connection checks. If that queue fills, for example during a bot flood, excess entries are skipped and a warning with the number skipped is logged when writing resumes.
