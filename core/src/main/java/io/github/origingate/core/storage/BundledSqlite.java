@@ -11,11 +11,20 @@ import java.sql.SQLException;
 final class BundledSqlite {
     private BundledSqlite() { }
     static Driver driver() throws SQLException {
-        try { return Holder.DRIVER; }
-        catch (ExceptionInInitializerError ex) { throw new SQLException("Could not load bundled SQLite", ex.getCause()); }
+        // A failed initializer would only be reported once; later calls would throw NoClassDefFoundError instead.
+        if (Holder.DRIVER == null) throw new SQLException("Could not load bundled SQLite", Holder.FAILURE);
+        return Holder.DRIVER;
     }
     private static final class Holder {
-        static final Driver DRIVER = load();
+        static final Driver DRIVER;
+        static final Throwable FAILURE;
+        static {
+            Driver driver = null;
+            Throwable failure = null;
+            try { driver = load(); } catch (RuntimeException | LinkageError ex) { failure = ex; }
+            DRIVER = driver;
+            FAILURE = failure;
+        }
         private static Driver load() {
             try {
                 URL location = BundledSqlite.class.getProtectionDomain().getCodeSource().getLocation();
