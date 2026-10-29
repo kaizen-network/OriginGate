@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -35,7 +35,7 @@ class IpInfoProviderTest {
 
     private IpInfoProvider provider(int status, String body) throws IOException {
         server = new TestServer(request -> Reply.text(status, body));
-        return new IpInfoProvider(HttpClient.newHttpClient(), server.uri("/lite/"), "test-token", Duration.ofSeconds(3),
+        return new IpInfoProvider(HttpTransport.newHttpClient(), server.uri("/lite/"), "test-token", Duration.ofSeconds(3),
                 Clock.fixed(TestSupport.NOW, ZoneOffset.UTC), "OriginGate/test");
     }
 

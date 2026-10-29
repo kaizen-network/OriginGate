@@ -1,12 +1,12 @@
 ---
 title: Overview
-description: OriginGate kicks VPN, proxy, and out-of-country players at login on Velocity, before they reach your servers.
+description: OriginGate kicks VPN, proxy, and out-of-country players at login on Bukkit, Spigot, Paper, BungeeCord, and Velocity.
 order: 1
 ---
 
 # OriginGate
 
-OriginGate is a Velocity plugin that checks where each player connects from. It can kick players who use a VPN or proxy, or who connect from a country you do not allow. The check runs during login, so a kicked player never reaches your backend servers.
+OriginGate checks where each player connects from on Bukkit/Spigot/Paper, BungeeCord, and Velocity. It can kick players who use a VPN or proxy, or who connect from a country you do not allow. Checks finish before world admission or the first backend connection.
 
 ## Features
 

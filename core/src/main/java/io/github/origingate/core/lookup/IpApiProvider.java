@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -27,7 +27,7 @@ public final class IpApiProvider implements LookupProvider {
     private final Clock clock;
 
     /** {@code key} is empty for the free endpoint. */
-    public IpApiProvider(HttpClient http, URI baseUrl, String key, Duration requestTimeout, Clock clock, String userAgent) {
+    public IpApiProvider(HttpTransport http, URI baseUrl, String key, Duration requestTimeout, Clock clock, String userAgent) {
         this.http = new HttpLookup(http, requestTimeout, userAgent, LABEL);
         this.baseUrl = HttpLookup.withSlash(baseUrl);
         this.key = key;
@@ -37,8 +37,8 @@ public final class IpApiProvider implements LookupProvider {
     @Override public String name() { return "ip-api"; }
 
     @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
-        String query = "?fields=" + FIELDS + (key.isEmpty() ? "" : "&key=" + URLEncoder.encode(key, StandardCharsets.UTF_8));
-        HttpLookup.Response response = http.get(URI.create(baseUrl + ip + query), Map.of());
+        String query = "?fields=" + FIELDS + (key.isEmpty() ? "" : "&key=" + io.github.origingate.core.util.Compat.encode(key));
+        HttpLookup.Response response = http.get(URI.create(baseUrl + ip + query), io.github.origingate.core.util.Compat.map());
         int code = response.status();
         if (code == 403 || code == 429) throw new KeyRejectedException("HTTP " + code + Json.message(response.body()));
         if (code != 200) throw new LookupException(LABEL + " answered HTTP " + code + Json.message(response.body()));

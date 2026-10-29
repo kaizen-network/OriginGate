@@ -5,7 +5,7 @@ import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.lookup.maxmind.MaxMindProvider;
 import io.github.origingate.core.lookup.maxmind.MaxMindUpdater;
 
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -30,11 +30,11 @@ public final class Providers implements AutoCloseable {
         this.updates = updates;
     }
 
-    public static Providers start(OriginGateConfig.Lookup settings, HttpClient http, Clock clock, Log log, String userAgent) {
+    public static Providers start(OriginGateConfig.Lookup settings, HttpTransport http, Clock clock, Log log, String userAgent) {
         Map<String, LookupProvider> built = new LinkedHashMap<>();
         for (String name : settings.inUse()) built.put(name, build(name, settings, http, clock, log, userAgent));
 
-        MaxMindProvider maxmind = built.get("maxmind") instanceof MaxMindProvider found ? found : null;
+        MaxMindProvider maxmind = built.get("maxmind") instanceof MaxMindProvider ? (MaxMindProvider) built.get("maxmind") : null;
         ScheduledExecutorService updates = null;
         if (maxmind != null) {
             OriginGateConfig.MaxMind files = settings.maxmind();
@@ -61,20 +61,20 @@ public final class Providers implements AutoCloseable {
         return new Providers(chain, maxmind, updates);
     }
 
-    private static LookupProvider build(String name, OriginGateConfig.Lookup settings, HttpClient http, Clock clock, Log log,
+    private static LookupProvider build(String name, OriginGateConfig.Lookup settings, HttpTransport http, Clock clock, Log log,
                                         String userAgent) {
-        return switch (name) {
-            case "proxycheck" -> new ProxyCheckProvider(http, settings.proxycheck().baseUrl(), settings.proxycheck().apiKeys(),
+        switch (name) {
+            case "proxycheck": return new ProxyCheckProvider(http, settings.proxycheck().baseUrl(), settings.proxycheck().apiKeys(),
                     millis(settings.proxycheck().requestTimeoutMillis()), clock, log, userAgent);
-            case "iphub" -> new IpHubProvider(http, IpHubProvider.BASE_URL, settings.iphub().apiKeys(),
+            case "iphub": return new IpHubProvider(http, IpHubProvider.BASE_URL, settings.iphub().apiKeys(),
                     millis(settings.iphub().requestTimeoutMillis()), clock, log, userAgent);
-            case "ip-api" -> new IpApiProvider(http, settings.ipApi().pro() ? IpApiProvider.PRO_URL : IpApiProvider.FREE_URL,
+            case "ip-api": return new IpApiProvider(http, settings.ipApi().pro() ? IpApiProvider.PRO_URL : IpApiProvider.FREE_URL,
                     settings.ipApi().apiKey(), millis(settings.ipApi().requestTimeoutMillis()), clock, userAgent);
-            case "ipinfo" -> new IpInfoProvider(http, IpInfoProvider.BASE_URL, settings.ipinfo().token(),
+            case "ipinfo": return new IpInfoProvider(http, IpInfoProvider.BASE_URL, settings.ipinfo().token(),
                     millis(settings.ipinfo().requestTimeoutMillis()), clock, userAgent);
-            case "maxmind" -> new MaxMindProvider(settings.maxmind().file(), clock, log);
-            default -> throw new IllegalArgumentException("Unknown provider " + name);
-        };
+            case "maxmind": return new MaxMindProvider(settings.maxmind().file(), clock, log);
+            default: throw new IllegalArgumentException("Unknown provider " + name);
+        }
     }
 
     private static Duration millis(int value) {
@@ -82,7 +82,7 @@ public final class Providers implements AutoCloseable {
     }
 
     private static List<LookupProvider> pick(Map<String, LookupProvider> built, List<String> names) {
-        return names.stream().map(built::get).toList();
+        return names.stream().map(built::get).collect(java.util.stream.Collectors.toList());
     }
 
     public ProviderChain chain() {

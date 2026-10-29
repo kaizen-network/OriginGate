@@ -14,7 +14,7 @@ import io.github.origingate.core.storage.SqlIpStorage;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -35,14 +35,15 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final OriginGateConfig config;
     private final Messages messages;
     private final IpStorage storage;
-    private final HttpClient http;
+    private final HttpTransport http;
     private final Providers providers;
     private final ThreadPoolExecutor workers;
     private final Gate gate;
     private final DecisionFile decisionFile;
     private final Clock clock;
+    private volatile boolean closed;
 
-    private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpClient http,
+    private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
                               Clock clock) {
         this.config = config;
@@ -82,9 +83,8 @@ public final class OriginGateRuntime implements AutoCloseable {
             log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
                     + "and sets up the table once the database answers.", null);
         }
-        HttpClient http = HttpClient.newBuilder()
+        HttpTransport http = HttpTransport.newBuilder()
                 .connectTimeout(Duration.ofMillis(config.lookup().waitMillis()))
-                .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
         ThreadPoolExecutor workers = new ThreadPoolExecutor(WORKERS, WORKERS, 30, TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(QUEUE), threads(), new ThreadPoolExecutor.AbortPolicy());
@@ -107,7 +107,28 @@ public final class OriginGateRuntime implements AutoCloseable {
         };
     }
 
-    public record Cleanup(int rows, int files) { }
+    public static final class Cleanup {
+        private final int rows;
+        private final int files;
+
+        public Cleanup(int rows, int files) {
+            this.rows = rows;
+            this.files = files;
+        }
+
+        public int rows() { return rows; }
+        public int files() { return files; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Cleanup)) return false;
+            Cleanup that = (Cleanup) other;
+            return java.util.Objects.equals(rows, that.rows)
+                && java.util.Objects.equals(files, that.files);
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(rows, files); }
+        @Override public String toString() { return "Cleanup[" + "rows=" + rows + ", " + "files=" + files + "]"; }
+ }
 
     /** Deletes stored lookups older than {@code keep-days} and log files older than {@code log-file-keep-days}. Blocks. */
     public Cleanup deleteExpired() throws SQLException, IOException {
@@ -148,6 +169,11 @@ public final class OriginGateRuntime implements AutoCloseable {
     /** Null when {@code log-file: false}. */
     public DecisionFile decisionFile() { return decisionFile; }
 
+    boolean isClosed() { return closed; }
+
+    /** Refuses new lookups at once; {@link #close} still waits for the queued ones. */
+    void stopLookups() { workers.shutdown(); }
+
     /**
      * For reload: keeps this runtime working long enough for logins that already started with it
      * (up to {@code wait-millis} plus two requests), then closes it in the background.
@@ -167,8 +193,10 @@ public final class OriginGateRuntime implements AutoCloseable {
         closer.start();
     }
 
-    /** Stops taking lookups, lets queued ones finish, then closes the HTTP client. */
-    @Override public void close() {
+    /** Stops taking lookups, lets queued ones finish, then closes the HTTP client. A second call waits for the first. */
+    @Override public synchronized void close() {
+        if (closed) return;
+        closed = true;
         workers.shutdown();
         try {
             // The HTTP client refuses new requests once shut down, so wait for queued lookups first.
@@ -177,7 +205,7 @@ public final class OriginGateRuntime implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
         providers.close();
-        http.shutdown();
+        http.close();
         storage.close();
     }
 }

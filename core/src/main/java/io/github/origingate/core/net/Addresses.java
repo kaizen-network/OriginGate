@@ -13,7 +13,7 @@ public final class Addresses {
             "((25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)");
     private static final Pattern IPV6 = Pattern.compile("[0-9A-Fa-f:.]{2,45}");
     // Unique local IPv6 (fc00::/7), which InetAddress does not treat as site-local.
-    private static final List<AddressRange> EXTRA_PRIVATE = List.of(AddressRange.parse("fc00::/7"));
+    private static final List<AddressRange> EXTRA_PRIVATE = io.github.origingate.core.util.Compat.list(AddressRange.parse("fc00::/7"));
 
     private Addresses() { }
 

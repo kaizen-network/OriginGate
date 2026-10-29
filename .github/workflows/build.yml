@@ -25,6 +25,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Java 8 for runtime checks
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '8'
+
       - name: Set up Java
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -38,7 +44,7 @@ jobs:
             gradle/wrapper/gradle-wrapper.properties
 
       - name: Check the probe script compiles
-        run: python3 -m py_compile tools/run_velocity_probe.py
+        run: python3 -m py_compile tools/run_velocity_probe.py tools/run_platform_probe.py
 
       - name: Check docs
         run: python3 tools/check_docs.py
@@ -47,13 +53,16 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_*.py'
 
       - name: Build and test
-        run: bash ./gradlew --no-daemon build :platform-velocity:probeJar
+        run: bash ./gradlew --no-daemon build :platform-velocity:probeJar :platform-bukkit:legacyRuntimeProbe
 
-      - name: Save plugin JAR
+      - name: Save plugin JARs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: OriginGate-${{ github.sha }}
-          path: platform-velocity/build/libs/OriginGate-Velocity-*.jar
+          path: |
+            platform-velocity/build/libs/OriginGate-Velocity-*.jar
+            platform-bukkit/build/libs/OriginGate-Bukkit-*.jar
+            platform-bungeecord/build/libs/OriginGate-BungeeCord-*.jar
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

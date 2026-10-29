@@ -15,7 +15,7 @@ public final class MemoryCache {
     public MemoryCache(int maxEntries, Duration maxAge, Clock clock) {
         this.maxAge = maxAge;
         this.clock = clock;
-        this.entries = new LinkedHashMap<>(16, 0.75f, true) {
+        this.entries = new LinkedHashMap<String, IpInfo>(16, 0.75f, true) {
             @Override protected boolean removeEldestEntry(Map.Entry<String, IpInfo> eldest) {
                 return size() > maxEntries;
             }

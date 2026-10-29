@@ -1,6 +1,6 @@
 package io.github.origingate.core.lookup.maxmind;
 
-import com.maxmind.db.Reader;
+
 import io.github.origingate.core.Log;
 import io.github.origingate.core.Text;
 import io.github.origingate.core.lookup.IpInfo;
@@ -32,7 +32,7 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
     private final Path file;
     private final Clock clock;
     private final Log log;
-    private final AtomicReference<Reader> reader = new AtomicReference<>();
+    private final AtomicReference<MaxMindDatabase> reader = new AtomicReference<>();
 
     public MaxMindProvider(Path file, Clock clock, Log log) {
         this.file = file;
@@ -49,10 +49,10 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
             return false;
         }
         try {
-            Reader opened = new Reader(file.toFile(), Reader.FileMode.MEMORY);
+            MaxMindDatabase opened = new MaxMindDatabase(file);
             close(reader.getAndSet(opened));
-            log.info("Loaded MaxMind " + opened.getMetadata().databaseType() + " built on "
-                    + LocalDate.ofInstant(opened.getMetadata().buildTime(), ZoneOffset.UTC));
+            log.info("Loaded MaxMind " + opened.databaseType() + " built on "
+                    + io.github.origingate.core.util.Compat.date(opened.buildTime(), ZoneOffset.UTC));
             return true;
         } catch (IOException | RuntimeException ex) {
             log.warn("Cannot read the MaxMind file " + file + ": " + Text.message(ex), null);
@@ -62,33 +62,33 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
 
     /** When the file in use was built, from its metadata, or empty when no file is loaded. */
     public Optional<Instant> buildTime() {
-        Reader current = reader.get();
-        return current == null ? Optional.empty() : Optional.of(current.getMetadata().buildTime());
+        MaxMindDatabase current = reader.get();
+        return current == null ? Optional.empty() : Optional.of(current.buildTime());
     }
 
     /** The edition of the file in use from its metadata, for example "GeoLite2-City", or empty when none is loaded. */
     public Optional<String> databaseType() {
-        Reader current = reader.get();
-        return current == null ? Optional.empty() : Optional.of(current.getMetadata().databaseType());
+        MaxMindDatabase current = reader.get();
+        return current == null ? Optional.empty() : Optional.of(current.databaseType());
     }
 
     /** A warning when the file in use is older than {@link #STALE_AFTER}, for owners who update it themselves. */
     public Optional<String> staleWarning() {
-        if (buildTime().isEmpty()) return Optional.empty();
+        if (!buildTime().isPresent()) return Optional.empty();
         Instant built = buildTime().get();
         if (!built.isBefore(clock.instant().minus(STALE_AFTER))) return Optional.empty();
-        return Optional.of("The MaxMind file " + file.getFileName() + " was built on " + LocalDate.ofInstant(built, ZoneOffset.UTC)
+        return Optional.of("The MaxMind file " + file.getFileName() + " was built on " + io.github.origingate.core.util.Compat.date(built, ZoneOffset.UTC)
                 + ". MaxMind's license asks for updates within 30 days of a new release. Set lookup.maxmind.account-id "
                 + "and license-key to update it automatically.");
     }
 
     @Override public IpInfo lookup(String ip, Instant deadline) throws LookupException {
-        Reader current = reader.get();
+        MaxMindDatabase current = reader.get();
         if (current == null) throw new LookupException("the MaxMind file is not loaded");
         InetAddress address = Addresses.parse(ip).orElseThrow(() -> new LookupException("not an IP address: " + ip));
         Map<?, ?> record;
         try {
-            record = current.get(address, Map.class);
+            record = current.get(address);
         } catch (IOException | RuntimeException ex) {
             throw new LookupException("MaxMind lookup failed: " + Text.message(ex), ex);
         }
@@ -100,18 +100,20 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
     }
 
     private static Map<?, ?> firstSubdivision(Map<?, ?> record) {
-        if (record.get("subdivisions") instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> first) {
-            return first;
+        Object subdivisions = record.get("subdivisions");
+        if (subdivisions instanceof List<?>) {
+            List<?> list = (List<?>) subdivisions;
+            if (!list.isEmpty() && list.get(0) instanceof Map<?, ?>) return (Map<?, ?>) list.get(0);
         }
         return null;
     }
 
     private static Map<?, ?> map(Map<?, ?> parent, String key) {
-        return parent != null && parent.get(key) instanceof Map<?, ?> value ? value : null;
+        return parent != null && parent.get(key) instanceof Map<?, ?> ? (Map<?, ?>) parent.get(key) : null;
     }
 
     private static String text(Map<?, ?> parent, String key) {
-        return parent != null && parent.get(key) instanceof String value ? value : null;
+        return parent != null && parent.get(key) instanceof String ? (String) parent.get(key) : null;
     }
 
     private static String englishName(Map<?, ?> place) {
@@ -122,7 +124,7 @@ public final class MaxMindProvider implements LookupProvider, AutoCloseable {
         close(reader.getAndSet(null));
     }
 
-    private static void close(Reader old) {
+    private static void close(MaxMindDatabase old) {
         if (old == null) return;
         try {
             old.close();

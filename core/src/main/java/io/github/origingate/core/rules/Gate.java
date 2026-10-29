@@ -12,9 +12,12 @@ import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.Decision.Outcome;
 
 import java.net.InetAddress;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,11 +30,23 @@ public final class Gate {
     private final OriginGateConfig config;
     private final LookupService lookups;
     private final Log log;
+    private final Set<String> permissionNames;
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log) {
         this.config = config;
         this.lookups = lookups;
         this.log = log;
+        Set<String> names = new LinkedHashSet<>(config.bypass().permissions());
+        names.addAll(config.rules().denyAddresses().bypassPermissions());
+        names.addAll(config.rules().vpn().bypassPermissions());
+        names.addAll(config.rules().proxy().bypassPermissions());
+        names.addAll(config.rules().country().bypassPermissions());
+        this.permissionNames = Collections.unmodifiableSet(names);
+    }
+
+    /** Every permission these checks read, so a platform can look them up before checking on another thread. */
+    public Set<String> permissionNames() {
+        return permissionNames;
     }
 
     /** Runs every check. The future never completes exceptionally; failures follow {@code on-lookup-failure}. */
@@ -50,14 +65,30 @@ public final class Gate {
         } catch (RuntimeException ex) {
             return CompletableFuture.completedFuture(failed(attempt, ex));
         }
-        return lookup.orTimeout(config.lookup().waitMillis(), TimeUnit.MILLISECONDS).handle((result, error) -> {
+        return io.github.origingate.core.util.Futures.timeout(lookup, config.lookup().waitMillis(), TimeUnit.MILLISECONDS)
+                .handle((result, error) -> decide(attempt, result, error));
+    }
+
+    /** Final identity and permissions are checked even when an earlier lookup failed. */
+    public Decision finish(LoginAttempt attempt, LookupService.Result result, Throwable error) {
+        try {
+            Optional<Decision> early = beforeLookup(attempt);
+            if (early.isPresent()) return early.get();
+        } catch (RuntimeException ex) {
+            return failed(attempt, ex);
+        }
+        return decide(attempt, result, error);
+    }
+
+    /** For an attempt that {@link #beforeLookup} has already let through to the lookup. */
+    private Decision decide(LoginAttempt attempt, LookupService.Result result, Throwable error) {
+        try {
             if (error != null) return failed(attempt, error);
-            try {
-                return afterLookup(attempt, result);
-            } catch (RuntimeException ex) {
-                return failed(attempt, ex);
-            }
-        });
+            if (result == null) return failed(attempt, new IllegalStateException("No lookup result"));
+            return afterLookup(attempt, result);
+        } catch (RuntimeException ex) {
+            return failed(attempt, ex);
+        }
     }
 
     /** Checks that need no lookup. Empty means a lookup is needed. */

@@ -4,9 +4,10 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.7")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.5.10") { isTransitive = false }
-    implementation("com.maxmind.db:maxmind-db:4.2.0")
-    // Supplied at runtime by the proxy (Velocity bundles Gson), so it is not shaded.
-    compileOnly("com.google.code.gson:gson:2.10.1")
+    runtimeOnly(project(path = ":maxmind-modern", configuration = "shadow"))
+    runtimeOnly(project(path = ":maxmind-legacy", configuration = "shadow"))
+    // Bundle and relocate consistently across all three platforms.
+    implementation("com.google.code.gson:gson:2.10.1")
     testImplementation("com.google.code.gson:gson:2.10.1")
 }
 
@@ -51,3 +52,5 @@ tasks.register<Test>("remoteDatabaseTest") {
         require(System.getenv("OG_TEST_DB_DATABASE")?.startsWith("origingate_test_") == true) { "Database must start with origingate_test_" }
     }
 }
+
+tasks.compileJava { options.release.set(8) }

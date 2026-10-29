@@ -30,7 +30,7 @@ public final class DecisionFile {
         LocalDateTime now = LocalDateTime.now(clock);
         Files.createDirectories(directory);
         Path file = directory.resolve(now.toLocalDate() + ".log");
-        Files.writeString(file, "[" + TIME.format(now) + "] " + line + System.lineSeparator(), StandardCharsets.UTF_8,
+        io.github.origingate.core.util.Compat.writeString(file, "[" + TIME.format(now) + "] " + line + System.lineSeparator(), StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 

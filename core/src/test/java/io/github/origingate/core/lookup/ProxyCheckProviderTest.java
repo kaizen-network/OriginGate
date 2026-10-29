@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.net.http.HttpClient;
+import io.github.origingate.core.net.HttpTransport;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -52,7 +52,7 @@ class ProxyCheckProviderTest {
         server.createContext("/v3/", this::handle);
         server.start();
         URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v3/");
-        return new ProxyCheckProvider(HttpClient.newHttpClient(), base, keys, Duration.ofMillis(timeoutMillis),
+        return new ProxyCheckProvider(HttpTransport.newHttpClient(), base, keys, Duration.ofMillis(timeoutMillis),
                 Clock.fixed(TestSupport.NOW, ZoneOffset.UTC), Log.NONE, "OriginGate/test");
     }
 

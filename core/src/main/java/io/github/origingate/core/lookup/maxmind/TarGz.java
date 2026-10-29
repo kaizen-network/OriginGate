@@ -35,7 +35,7 @@ final class TarGz {
                     }
                     return;
                 }
-                tar.skipNBytes((size + BLOCK - 1) / BLOCK * BLOCK);
+                io.github.origingate.core.util.Compat.skip(tar, (size + BLOCK - 1) / BLOCK * BLOCK);
             }
         }
         throw new IOException("The archive has no " + suffix + " file");
@@ -43,7 +43,7 @@ final class TarGz {
 
     /** Reads the next header. Returns false at the end of the archive (an all-zero block or a clean end of stream). */
     private static boolean readHeader(InputStream tar, byte[] header) throws IOException {
-        int read = tar.readNBytes(header, 0, BLOCK);
+        int read = io.github.origingate.core.util.Compat.read(tar, header, 0, BLOCK);
         if (read == 0) return false;
         if (read < BLOCK) throw new EOFException("The archive ends in the middle of a header");
         for (byte value : header) {

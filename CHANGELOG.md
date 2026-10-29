@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-10-29)
+
+Adds Bukkit, Spigot, Paper, and BungeeCord. See [compatibility](docs/compatibility.md) for tested builds and limits.
+
+### Added
+
+- Bukkit, Spigot, and Paper support (`OriginGate-Bukkit-<version>.jar`), for Minecraft 1.7.2 or newer on Java 8 or newer. Lookups run during asynchronous pre-login, and players are kicked before they enter the world. Old offline-mode CraftBukkit asks for a reconnect on the first uncached check.
+- BungeeCord support (`OriginGate-BungeeCord-<version>.jar`), for API 1.21-R0.4 or newer on Java 11 or newer. Players are kicked before their first backend connection. If another plugin sends a player to a server during the check, that server is used once the player is admitted.
+
+### Changed
+
+- Decision lines and daily log files are written in the background, so slow writes no longer delay logins. If writes fall behind, for example during a bot flood, excess lines are skipped and the number skipped is logged.
+- The Velocity JAR uses the proxy's Adventure library instead of bundling its own.
+
 ## 0.1.0 (2026-09-28)
 
 First release for Velocity.

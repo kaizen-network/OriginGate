@@ -29,9 +29,51 @@ public final class ProviderChain {
         public NoCountryException(String message) { super(message); }
     }
 
-    public record Answer(IpInfo info, AnsweredBy answeredBy) { }
+    public static final class Answer {
+        private final IpInfo info;
+        private final AnsweredBy answeredBy;
 
-    private record Named(String name, IpInfo info) { }
+        public Answer(IpInfo info, AnsweredBy answeredBy) {
+            this.info = info;
+            this.answeredBy = answeredBy;
+        }
+
+        public IpInfo info() { return info; }
+        public AnsweredBy answeredBy() { return answeredBy; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Answer)) return false;
+            Answer that = (Answer) other;
+            return java.util.Objects.equals(info, that.info)
+                && java.util.Objects.equals(answeredBy, that.answeredBy);
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(info, answeredBy); }
+        @Override public String toString() { return "Answer[" + "info=" + info + ", " + "answeredBy=" + answeredBy + "]"; }
+ }
+
+    private static final class Named {
+        private final String name;
+        private final IpInfo info;
+
+        public Named(String name, IpInfo info) {
+            this.name = name;
+            this.info = info;
+        }
+
+        public String name() { return name; }
+        public IpInfo info() { return info; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Named)) return false;
+            Named that = (Named) other;
+            return java.util.Objects.equals(name, that.name)
+                && java.util.Objects.equals(info, that.info);
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(name, info); }
+        @Override public String toString() { return "Named[" + "name=" + name + ", " + "info=" + info + "]"; }
+ }
 
     private final List<LookupProvider> countryFrom;
     private final List<LookupProvider> vpnFrom;
@@ -43,8 +85,8 @@ public final class ProviderChain {
     /** {@code budget} is the longest time one lookup may spend; no new provider is asked after it. */
     public ProviderChain(List<LookupProvider> countryFrom, List<LookupProvider> vpnFrom, Duration budget, Clock clock, Log log) {
         if (countryFrom.isEmpty()) throw new IllegalArgumentException("countryFrom needs at least one provider");
-        this.countryFrom = List.copyOf(countryFrom);
-        this.vpnFrom = List.copyOf(vpnFrom);
+        this.countryFrom = io.github.origingate.core.util.Compat.listCopy(countryFrom);
+        this.vpnFrom = io.github.origingate.core.util.Compat.listCopy(vpnFrom);
         this.budget = budget;
         this.clock = clock;
         this.log = log;
@@ -97,7 +139,7 @@ public final class ProviderChain {
                 } catch (KeyRejectedException ex) {
                     pausedUntil.put(name, clock.instant().plus(REFUSED_PAUSE));
                     log.warn(name + " refused the request (" + ex.getMessage() + "), skipping it for "
-                            + REFUSED_PAUSE.toSeconds() + " seconds", null);
+                            + REFUSED_PAUSE.getSeconds() + " seconds", null);
                     problems.add(name + ": " + ex.getMessage());
                     failed.add(name);
                     continue;
@@ -108,7 +150,7 @@ public final class ProviderChain {
                 }
                 answers.put(name, info);
             }
-            if (needsCountry && Countries.normalize(info.countryCode()).isEmpty()) {
+            if (needsCountry && !Countries.normalize(info.countryCode()).isPresent()) {
                 problems.add(name + " had no country");
                 continue;
             }
@@ -119,7 +161,7 @@ public final class ProviderChain {
 
     /** Country fields from the country answer; flags, type, and operator from the VPN answer; network fields from either. */
     static IpInfo merge(String ip, IpInfo country, IpInfo vpn) {
-        String code = Countries.normalize(country.countryCode()).orElseThrow();
+        String code = Countries.normalize(country.countryCode()).orElseThrow(java.util.NoSuchElementException::new);
         if (vpn == null) {
             return new IpInfo(ip, country.provider(), country.organisation(), null, country.city(), country.region(),
                     country.country(), code, country.asn(), false, false, null, country.checkedAt());
@@ -144,6 +186,6 @@ public final class ProviderChain {
     }
 
     private static String names(List<LookupProvider> providers) {
-        return String.join(", ", providers.stream().map(LookupProvider::name).toList());
+        return String.join(", ", providers.stream().map(LookupProvider::name).collect(java.util.stream.Collectors.toList()));
     }
 }
