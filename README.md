@@ -23,7 +23,7 @@ A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 looku
 
 ## Quick start
 
-1. Choose the JAR for your platform and put it in its `plugins` folder. Bukkit and BungeeCord builds are available from source until their first release.
+1. Download the JAR for your platform from [releases](https://github.com/kaizen-network/OriginGate/releases) and put it in its `plugins` folder.
 2. Start the server or proxy. OriginGate creates `config.yml` and `messages.yml` in `plugins/OriginGate` (Bukkit/BungeeCord) or `plugins/origingate` (Velocity).
 3. In `config.yml`, add your API keys and turn on the rules you want. Start with `dry-run: true`.
 4. Run `origingate reload` in the console.

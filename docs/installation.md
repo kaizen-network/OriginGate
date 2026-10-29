@@ -22,7 +22,7 @@ SQLite and MySQL/MariaDB support are bundled. On a proxy network, install at the
 
 ## Install
 
-1. Choose the JAR above for your platform. Use a matching [release](https://github.com/kaizen-network/OriginGate/releases), or [build from source](contributing/development.md). The new Bukkit and BungeeCord builds have not been released yet.
+1. Choose the JAR above for your platform. Download it from the [releases page](https://github.com/kaizen-network/OriginGate/releases), or [build it from source](contributing/development.md).
 2. Put it in the server or proxy's `plugins` folder and start it. Settings appear in `plugins/OriginGate` on Bukkit/BungeeCord, or `plugins/origingate` on Velocity.
 3. In `config.yml`, add your API keys and turn on the rules you want. Setting `dry-run: true` for the first days is a good idea.
 4. Run `origingate reload` in the console.

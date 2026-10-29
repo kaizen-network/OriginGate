@@ -45,4 +45,4 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 2. Add a `## <version> (<date>)` section at the top of `CHANGELOG.md`. Modrinth and GitHub Releases use that section as the release notes.
 3. Run the unit tests and the [loopback probe](testing.md#loopback-probe).
 4. Commit and push, and wait for the GitHub Actions run on that commit to pass.
-5. Publish the JAR from that run, with the license and third-party notices.
+5. Publish the three plugin JARs from that run, with the license and third-party notices.

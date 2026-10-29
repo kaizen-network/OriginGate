@@ -12,9 +12,11 @@ order: 10
 | --- | --- |
 | CraftBukkit 1.7.2-R0.3 build 3020, Java 8 | Local offline-mode logins pass allow/deny, global permission bypass, dry-run, failure policies, reload, and timeout checks. The first uncached check requires a reconnect. |
 | Spigot 1.8.8, git-Spigot-e4d4710-e1ebe52, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
+| Paper 1.8.8 build 445, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
 | Spigot 1.12.2, git-Spigot-642f6d2-6103339, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
+| Paper 1.12.2 build 1620, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
 | Paper 1.21.7 build 32, Java 21 | Local login checks pass allow/deny before world entry, global permission bypass, dry-run, failure policies, reload, and timeout. |
-| BungeeCord build 2100, Java 21 | Local login checks pass; denied players never reach the test backend. Includes permission bypass, failure policies, dry-run, reload, and timeout. |
+| BungeeCord build 2107, Java 21 | Local login checks pass; denied players never reach the test backend. Includes permission bypass, failure policies, dry-run, reload, and timeout. |
 | Velocity 3.4.0 build 563, Java 25 | All automated login checks pass: allowed join, VPN and proxy kicks, bypass, country rules, deny-addresses, dry-run, lookup failures, reload, API key rotation, commands, and log files |
 | Velocity-CTD 4.2.1 with LuckPerms and ConsentGate 0.2.0, real proxycheck.io API | Real Java joins: allowed, VPN let in with a bypass permission, VPN kicked without it, lookup reused from storage |
 
