@@ -67,7 +67,7 @@ class GateTest {
 
     @Test void finalGlobalBypassWinsOverPrefetchFailure() throws Exception {
         Gate gate = gate("lookup.on-lookup-failure", "deny", "bypass.permissions", List.of("origingate.bypass"));
-        Decision decision = gate.finish(player("FixtureUser", VPN_IP, "origingate.bypass"), null,
+        Decision decision = gate.finish(player("Kai", VPN_IP, "origingate.bypass"), null,
                 new java.util.concurrent.TimeoutException());
         assertEquals(Outcome.ALLOW, decision.outcome());
     }
@@ -76,8 +76,8 @@ class GateTest {
         Gate gate = gate();
         LookupService.Result lookup = new LookupService.Result(info(VPN_IP, "Netherlands", "NL", true, false),
                 LookupService.Source.PROVIDER);
-        assertEquals(Outcome.BYPASS, gate.finish(player("FixtureUser", VPN_IP, "origingate.bypass.vpn"), lookup, null).outcome());
-        assertEquals(Outcome.DENY, gate.finish(player("FixtureUser", VPN_IP), lookup, null).outcome());
+        assertEquals(Outcome.BYPASS, gate.finish(player("Kai", VPN_IP, "origingate.bypass.vpn"), lookup, null).outcome());
+        assertEquals(Outcome.DENY, gate.finish(player("Kai", VPN_IP), lookup, null).outcome());
     }
 
     @Test void vpnIsKickedWithoutBypass() throws Exception {
@@ -101,7 +101,7 @@ class GateTest {
         Decision decision = run(gate, player("Alex", VPN_IP, "origingate.bypass.vpn"));
         assertEquals(Outcome.BYPASS, decision.outcome());
         assertEquals(Rule.VPN, decision.rule());
-        Decision noBypass = run(gate, player("Blake", VPN_IP));
+        Decision noBypass = run(gate, player("Steve", VPN_IP));
         assertEquals(Rule.VPN, noBypass.rule());
     }
 
@@ -109,7 +109,7 @@ class GateTest {
         Decision decision = run(gate(), player("Alex", PROXY_IP, "origingate.bypass.vpn"));
         assertEquals(Outcome.DENY, decision.outcome());
         assertEquals(Rule.PROXY, decision.rule());
-        assertEquals(Outcome.BYPASS, run(gate(), player("Blake", PROXY_IP, "origingate.bypass.proxy")).outcome());
+        assertEquals(Outcome.BYPASS, run(gate(), player("Steve", PROXY_IP, "origingate.bypass.proxy")).outcome());
     }
 
     @Test void proxyFromAllowedCountryPassesToTheCountryRule() throws Exception {
@@ -134,18 +134,18 @@ class GateTest {
         Decision decision = run(deny, player("Alex", HOME_IP));
         assertEquals(Rule.COUNTRY, decision.rule());
         assertEquals(Outcome.DENY, decision.outcome());
-        assertEquals(Outcome.BYPASS, run(deny, player("Blake", HOME_IP, "origingate.bypass.country")).outcome());
+        assertEquals(Outcome.BYPASS, run(deny, player("Steve", HOME_IP, "origingate.bypass.country")).outcome());
     }
 
     @Test void globalBypassSkipsTheLookup() throws Exception {
         Gate gate = gate("bypass.permissions", List.of("vip.pass"), "bypass.players",
-                List.of("Casey", TestSupport.player("Drew", VPN_IP).uuid().toString()), "bypass.addresses", List.of("203.0.113.0/24"));
+                List.of("Noor", TestSupport.player("Sunny", VPN_IP).uuid().toString()), "bypass.addresses", List.of("203.0.113.0/24"));
         assertEquals(Outcome.ALLOW, run(gate, player("Alex", PROXY_IP, "vip.pass")).outcome());
-        assertEquals(Outcome.ALLOW, run(gate, player("casey", PROXY_IP)).outcome());
-        assertEquals(Outcome.ALLOW, run(gate, player("Drew", PROXY_IP)).outcome());
-        assertEquals(Outcome.ALLOW, run(gate, player("Emery", VPN_IP)).outcome());
+        assertEquals(Outcome.ALLOW, run(gate, player("noor", PROXY_IP)).outcome());
+        assertEquals(Outcome.ALLOW, run(gate, player("Sunny", PROXY_IP)).outcome());
+        assertEquals(Outcome.ALLOW, run(gate, player("Ari", VPN_IP)).outcome());
         assertEquals(0, provider.calls.get());
-        assertEquals(Outcome.DENY, run(gate, player("Frankie", PROXY_IP)).outcome());
+        assertEquals(Outcome.DENY, run(gate, player("Zuri", PROXY_IP)).outcome());
     }
 
     @Test void denyAddressesAreCheckedBeforeAnyLookup() throws Exception {
@@ -154,7 +154,7 @@ class GateTest {
         Decision decision = run(gate, player("Alex", HOME_IP));
         assertEquals(Outcome.DENY, decision.outcome());
         assertEquals(Rule.DENY_ADDRESSES, decision.rule());
-        assertEquals(Outcome.BYPASS, run(gate, player("Blake", HOME_IP, "trusted")).outcome());
+        assertEquals(Outcome.BYPASS, run(gate, player("Steve", HOME_IP, "trusted")).outcome());
         assertEquals(0, provider.calls.get());
     }
 

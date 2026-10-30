@@ -30,7 +30,7 @@ SQLite and MySQL/MariaDB support are bundled. On a proxy network, install at the
 Each check prints one line in the console, for example:
 
 ```
-DENY rule=vpn player=ExamplePlayer ip=203.0.113.7 provider="Example Hosting" country="Netherlands" ... note="flagged as VPN"
+DENY rule=vpn player=Steve ip=203.0.113.7 provider="Example Hosting" country="Netherlands" ... note="flagged as VPN"
 ```
 
 `console-log` in `config.yml` sets how many of these lines you see. See [logging](how-it-works.md#logging).

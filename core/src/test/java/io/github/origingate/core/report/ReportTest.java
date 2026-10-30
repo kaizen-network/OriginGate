@@ -37,7 +37,7 @@ class ReportTest {
         IpInfo info = TestSupport.info("203.0.113.7", "Netherlands", "NL", true, false);
         Decision decision = new Decision(Decision.Outcome.DENY, Rule.VPN, "flagged as VPN",
                 new LookupService.Result(info, LookupService.Source.PROVIDER, new AnsweredBy("maxmind", "proxycheck")), false);
-        String line = DecisionLine.format(TestSupport.player("ExamplePlayer", "203.0.113.7"), decision);
+        String line = DecisionLine.format(TestSupport.player("Steve", "203.0.113.7"), decision);
         assertTrue(line.contains(" source=maxmind+proxycheck "), line);
     }
 

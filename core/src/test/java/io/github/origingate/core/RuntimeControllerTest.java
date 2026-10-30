@@ -66,13 +66,13 @@ class RuntimeControllerTest {
     }
 
     private LoginAttempt attempt() throws Exception {
-        return new LoginAttempt("test-player", null, InetAddress.getByName("203.0.113.12"), permission -> false);
+        return new LoginAttempt("Efe", null, InetAddress.getByName("203.0.113.12"), permission -> false);
     }
 
     private void assertDecisionLogged() {
         Path file = directory.resolve("logs").resolve(LocalDate.now() + ".log");
         assertTimeoutPreemptively(Duration.ofSeconds(3), () -> {
-            while (!Files.exists(file) || !Files.readString(file).contains("player=test-player")) Thread.sleep(10);
+            while (!Files.exists(file) || !Files.readString(file).contains("player=Efe")) Thread.sleep(10);
         });
     }
 
@@ -103,7 +103,7 @@ class RuntimeControllerTest {
         controller.report(active, attempt(), new Decision(Decision.Outcome.DENY, Rule.DENY_ADDRESSES, "blocked", null, false));
         controller.stop(5000);
         assertNull(controller.runtime());
-        assertTrue(Files.readString(directory.resolve("logs").resolve(LocalDate.now() + ".log")).contains("player=test-player"),
+        assertTrue(Files.readString(directory.resolve("logs").resolve(LocalDate.now() + ".log")).contains("player=Efe"),
                 "A queued line must be written before the plugin is unloaded");
     }
 
