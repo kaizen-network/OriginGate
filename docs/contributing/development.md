@@ -52,7 +52,7 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 
 `hangar.yml` runs `tools/publish_hangar.py`. It reads a Hangar API key from the `HANGAR_TOKEN` repository secret. The key needs the `view_public_info` (to check whether the version is already uploaded), `create_version`, and `edit_page` permissions.
 
-All three JARs go into one Hangar version. `tools/hangar.json` sets each JAR's platform and oldest supported version:
+All three JARs go into one Hangar version. Hangar accepts files up to 10 MB, so a bigger JAR is listed as a direct link to its GitHub release download. `tools/hangar.json` sets each JAR's platform and oldest supported version:
 
 | JAR | Hangar platform | From |
 | --- | --- | --- |

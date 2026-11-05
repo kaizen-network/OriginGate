@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest import mock
 import urllib.error
@@ -61,6 +62,41 @@ class PublishHangarTest(unittest.TestCase):
         self.assertIn(('GET', f'/projects/{project}', False), calls)
         self.assertIn(('GET', f'/projects/{project}/versions/1.0.0', True), calls)
         self.assertFalse(any(path.endswith('/upload') for _, path, _ in calls))
+
+    def test_large_jars_are_linked_and_small_ones_uploaded(self):
+        config = json.loads((Path(__file__).parent / 'hangar.json').read_text(encoding='utf-8'))
+        minimums = {entry['platform']: entry['min_version'] for entry in config['files']}
+        captured = {}
+
+        def fake(method, path, jwt, body=None, content_type=None, missing_ok=False):
+            if path.startswith('/authenticate'):
+                return {'token': 'jwt'}
+            if path.startswith('/platforms/'):
+                return [{'version': minimums[path.split('/')[2]], 'subVersions': []}]
+            if '/versions/' in path:
+                return None
+            return {'url': 'https://hangar.test/version'} if path.endswith('/upload') else {}
+
+        def fake_multipart(data, file_paths):
+            captured['data'], captured['paths'] = data, file_paths
+            return b'', 'multipart/form-data; boundary=x'
+
+        names = [entry['pattern'].format(version='1.0.0') for entry in config['files']]
+        with tempfile.TemporaryDirectory() as folder:
+            for i, name in enumerate(names):
+                (Path(folder) / name).write_bytes(b'x' * (5 if i == 0 else 20))
+            with mock.patch.object(ph, 'request', fake), mock.patch.object(ph, 'multipart', fake_multipart), \
+                    mock.patch.object(ph, 'MAX_UPLOAD_BYTES', 10), \
+                    mock.patch.dict(os.environ, {'HANGAR_TOKEN': 'key', 'GITHUB_REPOSITORY': 'kaizen-network/Example'}), \
+                    mock.patch.object(sys, 'argv', ['publish_hangar.py', '--tag', 'v1.0.0', '--dist', folder]), \
+                    mock.patch('builtins.print'):
+                ph.main()
+        files = captured['data']['files']
+        self.assertEqual([p.name for p in captured['paths']], names[:1])
+        self.assertNotIn('externalUrl', files[0])
+        for name, file in zip(names[1:], files[1:]):
+            self.assertEqual(file['externalUrl'],
+                             f'https://github.com/kaizen-network/Example/releases/download/v1.0.0/{name}')
 
 
 if __name__ == '__main__':
