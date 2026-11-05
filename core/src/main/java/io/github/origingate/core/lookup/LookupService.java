@@ -18,22 +18,26 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 /**
- * Finds IP data in this order: memory, storage, providers. Only one lookup per address runs at a time; other callers
- * share its result. Answers are kept per address. An IPv6 answer that a rule would act on (see {@code sharedAcrossNetwork})
- * is also kept for its whole /64, so the next address in that /64 gets it from memory: home and mobile users can switch
- * addresses inside their /64, but hosts may split one /64 between customers, so a clean answer is never shared.
- * A queued lookup whose callers have all stopped waiting is dropped before any provider is asked. Storage errors are
- * logged and skipped, never fatal, and after one, storage is left alone for {@link #STORAGE_PAUSE} so a dead database
- * does not slow logins.
+ * Finds IP data in this order: the address in memory, the address in storage, an answer kept for its IPv6 /64, then
+ * the providers. Only one lookup per address runs at a time; other callers share its result. Answers are kept per
+ * address. An IPv6 answer that a rule would act on (see {@code sharedAcrossNetwork}) is also kept for its whole /64, so
+ * the next address in that /64 gets it from memory: home and mobile users can switch addresses inside their /64, but
+ * hosts may split one /64 between customers, so a clean answer is never shared, and an address's own answer always
+ * comes first. While the queue is backed up, a queued lookup whose callers have all stopped waiting is dropped before
+ * any provider is asked. Storage errors are logged and skipped, never fatal, and after one, storage is left alone for
+ * {@link #STORAGE_PAUSE} so a dead database does not slow logins.
  */
 public final class LookupService {
     public static final Duration STORAGE_PAUSE = Duration.ofSeconds(60);
     public static final Duration NO_COUNTRY_PAUSE = Duration.ofMinutes(5);
+    /** The budget alert is cleared only after this long without a login over the budget, so a steady flood does not flap. */
+    public static final Duration BUDGET_QUIET = Duration.ofSeconds(60);
     private static final int MAX_NO_COUNTRY = 10_000;
 
     public enum Source { MEMORY, STORAGE, PROVIDER }
@@ -117,8 +121,13 @@ public final class LookupService {
     private final LookupStats stats;
     private final Alerts alerts;
     private final Predicate<IpInfo> sharedAcrossNetwork;
-    private final AtomicBoolean budgetUsedUp = new AtomicBoolean();
     private final AtomicLong skippedByBudget = new AtomicLong();
+    /** When a login was last over the budget, or null. */
+    private volatile Instant lastOverBudget;
+    /** Lookups handed to the executor that no worker has picked up yet. */
+    private final AtomicInteger queued = new AtomicInteger();
+    /** A stale lookup is dropped only with at least this many others still queued behind it: the worker count. */
+    private final int backlog;
     private final Map<String, Flight> inFlight = new ConcurrentHashMap<>();
     /**
      * Addresses whose last provider answer had no country, with the time they may be asked again. Kept per address:
@@ -155,6 +164,7 @@ public final class LookupService {
         this.stats = stats;
         this.alerts = alerts;
         this.sharedAcrossNetwork = sharedAcrossNetwork;
+        this.backlog = executor instanceof ThreadPoolExecutor ? Math.max(1, ((ThreadPoolExecutor) executor).getCorePoolSize()) : 1;
     }
 
     /** Looks up {@code ip} for a caller that waits without a time limit, such as a command. */
@@ -169,10 +179,11 @@ public final class LookupService {
      */
     public CompletableFuture<Result> lookup(String ip, boolean refresh, Duration wait) {
         if (!refresh) {
-            Optional<IpInfo> cached = remembered(ip);
+            // Only this address here: its own row in storage must come before an answer kept for its /64.
+            Optional<IpInfo> cached = cache.get(ip);
             if (cached.isPresent()) {
                 stats.answered(Source.MEMORY);
-                return CompletableFuture.completedFuture(new Result(cached.get().withIp(ip), Source.MEMORY));
+                return CompletableFuture.completedFuture(new Result(cached.get(), Source.MEMORY));
             }
         }
         Instant deadline = wait == null ? null : clock.instant().plus(wait);
@@ -196,18 +207,18 @@ public final class LookupService {
         }
     }
 
-    /** The answer for this address, or else one a rule acts on for its IPv6 /64. */
-    private Optional<IpInfo> remembered(String ip) {
-        Optional<IpInfo> exact = cache.get(ip);
-        if (exact.isPresent()) return exact;
+    /** An answer a rule acts on, kept for this address's IPv6 /64 from a neighbour. */
+    private Optional<IpInfo> sharedAnswer(String ip) {
         String network = Addresses.sharedNetwork(ip);
         return network == null ? Optional.empty() : cache.get(network);
     }
 
     private void start(Flight flight, String flightKey, String ip, boolean refresh) {
+        queued.incrementAndGet();
         try {
             executor.execute(() -> run(flight, flightKey, ip, refresh));
         } catch (RejectedExecutionException ex) {
+            queued.decrementAndGet();
             inFlight.remove(flightKey, flight);
             stats.countFailed();
             flight.future.completeExceptionally(new LookupException("Too many lookups are waiting", ex));
@@ -217,9 +228,11 @@ public final class LookupService {
     private void run(Flight flight, String flightKey, String ip, boolean refresh) {
         Result result = null;
         Throwable failure = null;
-        if (flight.dropIfExpired(clock.instant())) {
+        // Without a backlog, a late answer still fills the cache for the player's next join, as in 1.0.0.
+        boolean backedUp = queued.decrementAndGet() >= backlog;
+        if (backedUp && flight.dropIfExpired(clock.instant())) {
             stats.countDropped();
-            log.debug("Dropped the lookup for " + ip + ": every login waiting for it stopped waiting before a worker was free");
+            log.debug("Dropped the lookup for " + ip + ": the queue is backed up and every login waiting for it stopped waiting");
             failure = new SkippedException("dropped: no login was waiting for it any more");
         } else {
             try {
@@ -245,11 +258,13 @@ public final class LookupService {
     private Result load(String ip, boolean refresh) throws LookupException {
         Instant now = clock.instant();
         if (!refresh) {
-            // A neighbour's answer that a rule acts on may have arrived while this lookup was queued.
-            Optional<IpInfo> cached = remembered(ip);
-            if (cached.isPresent()) return new Result(cached.get().withIp(ip), Source.MEMORY);
+            Optional<IpInfo> cached = cache.get(ip);
+            if (cached.isPresent()) return new Result(cached.get(), Source.MEMORY);
             Optional<IpInfo> stored = read(ip, now.minus(maxAge));
             if (stored.isPresent()) return remember(stored.get(), Source.STORAGE, null);
+            // Only after this address's own memory and storage: a neighbour's answer that a rule acts on.
+            Optional<IpInfo> shared = sharedAnswer(ip);
+            if (shared.isPresent()) return new Result(shared.get().withIp(ip), Source.MEMORY);
             Instant retryAt;
             synchronized (noCountry) {
                 retryAt = noCountry.get(ip);
@@ -279,19 +294,20 @@ public final class LookupService {
     /** A refresh from a command is not limited; logins over the budget fail and follow on-budget-exceeded. */
     private void takeBudget(Instant now) throws SkippedException {
         if (budget.take(now)) {
-            if (budgetUsedUp.compareAndSet(true, false)) {
-                alerts.recovered("The lookup budget has room again. " + skippedByBudget.getAndSet(0)
-                        + " new addresses were not checked while it was used up.");
+            Instant last = lastOverBudget;
+            if (last == null || !now.isBefore(last.plus(BUDGET_QUIET))) {
+                // Alerts.Once sends this only after a problem was sent, once per flood.
+                alerts.recovered("budget", "The lookup budget has had room for a minute again. "
+                        + skippedByBudget.getAndSet(0) + " new addresses were not checked while it was used up.");
             }
             return;
         }
+        lastOverBudget = now;
         stats.countOverBudget();
         skippedByBudget.incrementAndGet();
-        if (budgetUsedUp.compareAndSet(false, true)) {
-            alerts.problem("The lookup budget of " + budget.perMinute() + (budget.perMinute() == 1 ? " lookup" : " lookups")
-                    + " per minute is used up. New addresses are not looked up and follow on-budget-exceeded (or "
-                    + "on-lookup-failure when it is not set) until it has room again.");
-        }
+        alerts.problem("budget", "The lookup budget of " + budget.perMinute() + (budget.perMinute() == 1 ? " lookup" : " lookups")
+                + " per minute is used up. New addresses are not looked up and follow on-budget-exceeded (or "
+                + "on-lookup-failure when it is not set) until it has room again.");
         throw new BudgetExceededException("the lookup budget of " + budget.perMinute() + " per minute is used up");
     }
 

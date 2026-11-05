@@ -76,6 +76,9 @@ public final class SqlIpStorage implements IpStorage {
                 connection = BundledSqlite.driver().connect(url, new Properties());
             } catch (SQLException ex) {
                 throw BundledSqlite.explain(ex);
+            } catch (LinkageError ex) {
+                // After a first failed load (such as on reload), sqlite-jdbc throws the link error itself.
+                throw BundledSqlite.explain(new SQLException("SQLite could not be loaded", ex));
             }
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA busy_timeout=5000");

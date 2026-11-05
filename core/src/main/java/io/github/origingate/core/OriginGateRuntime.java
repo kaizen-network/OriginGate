@@ -11,6 +11,7 @@ import io.github.origingate.core.report.DecisionFile;
 import io.github.origingate.core.rules.Gate;
 import io.github.origingate.core.storage.IpStorage;
 import io.github.origingate.core.storage.SqlIpStorage;
+import io.github.origingate.core.storage.SqliteUnavailableException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,11 +52,13 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final LookupStats stats;
     /** False once replaced or closed, so a retired runtime sends no more alerts. */
     private final AtomicBoolean current;
+    /** "sqlite", "mysql", or "memory-only" when SQLite cannot run on this system. */
+    private final String storageName;
     private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
-                              Clock clock, LookupStats stats, AtomicBoolean current) {
+                              Clock clock, LookupStats stats, AtomicBoolean current, String storageName) {
         this.config = config;
         this.messages = messages;
         this.storage = storage;
@@ -67,6 +70,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.clock = clock;
         this.stats = stats;
         this.current = current;
+        this.storageName = storageName;
     }
 
     /** Copies the default config.yml and messages.yml when they do not exist yet. */
@@ -100,12 +104,25 @@ public final class OriginGateRuntime implements AutoCloseable {
         Log log = Log.withDebug(baseLog, config.consoleLog() == OriginGateConfig.ConsoleLog.DEBUG);
         Clock clock = Clock.systemDefaultZone();
         OriginGateConfig.Storage settings = config.storage();
-        SqlIpStorage storage = settings.type().equals("mysql")
-                ? SqlIpStorage.mysql(settings.mysql())
-                : SqlIpStorage.sqlite(settings.sqliteFile());
-        if (!storage.ready()) {
-            log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
-                    + "and sets up the table once the database answers.", null);
+        IpStorage storage;
+        String storageName = settings.type();
+        if (settings.type().equals("mysql")) {
+            SqlIpStorage mysql = SqlIpStorage.mysql(settings.mysql());
+            if (!mysql.ready()) {
+                log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
+                        + "and sets up the table once the database answers.", null);
+            }
+            storage = mysql;
+        } else {
+            try {
+                storage = SqlIpStorage.sqlite(settings.sqliteFile());
+            } catch (SqliteUnavailableException ex) {
+                // Stopping here would leave every login unchecked, so checks go on without saved lookups.
+                log.error(ex.getMessage() + " Until then, OriginGate keeps checking connections, but lookups are kept in "
+                        + "memory only and asked again after a restart.", null);
+                storage = IpStorage.NONE;
+                storageName = "memory-only";
+            }
         }
         HttpTransport http = HttpTransport.newBuilder()
                 .connectTimeout(Duration.ofMillis(config.lookup().waitMillis()))
@@ -116,8 +133,8 @@ public final class OriginGateRuntime implements AutoCloseable {
         Duration maxAge = Duration.ofDays(settings.maxAgeDays());
         AtomicBoolean current = new AtomicBoolean(true);
         Alerts whileCurrent = new Alerts() {
-            @Override public void problem(String message) { if (current.get()) alerts.problem(message); }
-            @Override public void recovered(String message) { if (current.get()) alerts.recovered(message); }
+            @Override public void problem(String key, String message) { if (current.get()) alerts.problem(key, message); }
+            @Override public void recovered(String key, String message) { if (current.get()) alerts.recovered(key, message); }
         };
         Providers providers = Providers.start(config.lookup(), http, clock, log, "OriginGate/" + VERSION, whileCurrent, stats);
         LookupService lookups = new LookupService(providers.chain(), storage,
@@ -127,7 +144,7 @@ public final class OriginGateRuntime implements AutoCloseable {
                 info -> Gate.match(config.rules(), info).isPresent());
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log, namesUnverified),
-                decisionFile, clock, stats, current);
+                decisionFile, clock, stats, current, storageName);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -191,6 +208,9 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     public OriginGateConfig config() { return config; }
 
+    /** "sqlite", "mysql", or "memory-only" when SQLite cannot run on this system. */
+    public String storageName() { return storageName; }
+
     public Messages messages() { return messages; }
 
     public Gate gate() { return gate; }
@@ -208,7 +228,8 @@ public final class OriginGateRuntime implements AutoCloseable {
         LookupService lookups = gate.lookups();
         lines.add("Budget: " + (lookups.budgetPerMinute() == 0 ? "no limit (max-lookups-per-minute: 0)"
                 : lookups.budgetUsed() + " of " + lookups.budgetPerMinute() + " lookups in the last minute"));
-        lines.add("Memory cache: " + lookups.cache().size() + " entries");
+        lines.add("Memory cache: " + lookups.cache().size() + " entries. Storage: " + storageName
+                + (storageName.equals("memory-only") ? " (SQLite cannot run on this system)" : ""));
         lines.add("Providers (" + providers.chain().describe() + "):");
         for (String line : providers.chain().status()) lines.add("  " + line);
         lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)

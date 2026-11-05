@@ -76,7 +76,7 @@ public final class ProviderChain {
         @Override public String toString() { return "Named[" + "name=" + name + ", " + "info=" + info + "]"; }
  }
 
-    /** Failed lookups in a row (timeouts, server errors) after which staff are alerted once. */
+    /** Failed lookups in a row (timeouts, server errors) after which staff are alerted. */
     public static final int FAILURES_BEFORE_ALERT = 3;
 
     /** How one provider is doing, for alerts and {@code origingate status}. */
@@ -85,35 +85,26 @@ public final class ProviderChain {
         private Instant pausedUntil;
         private int failuresInRow;
         private String lastProblem;
-        /** True after a problem alert, until the provider answers again. */
-        private boolean alerted;
+        /** True after a pause, until the provider answers again. */
+        private boolean unanswered;
 
-        /** Returns true when this pause should be reported (the first problem since the last answer). */
-        synchronized boolean pause(Instant until, String problem) {
+        synchronized void pause(Instant until, String problem) {
             pausedUntil = until;
             lastProblem = problem;
-            return report();
+            unanswered = true;
         }
 
+        /** Returns true from the {@link #FAILURES_BEFORE_ALERT}th failure in a row on. */
         synchronized boolean failure(String problem) {
             failuresInRow++;
             lastProblem = problem;
-            return failuresInRow >= FAILURES_BEFORE_ALERT && report();
+            return failuresInRow >= FAILURES_BEFORE_ALERT;
         }
 
-        private boolean report() {
-            if (alerted) return false;
-            alerted = true;
-            return true;
-        }
-
-        /** Returns true when a problem had been reported, so the recovery should be too. */
-        synchronized boolean answered() {
+        synchronized void answered() {
             failuresInRow = 0;
             pausedUntil = null;
-            boolean recovered = alerted;
-            alerted = false;
-            return recovered;
+            unanswered = false;
         }
 
         synchronized Instant pausedUntil() { return pausedUntil; }
@@ -123,7 +114,7 @@ public final class ProviderChain {
                 return "paused for " + seconds(now, pausedUntil) + " s after: " + lastProblem;
             }
             if (failuresInRow > 0) return "failing (" + failuresInRow + " in a row, last: " + lastProblem + ")";
-            if (alerted) return "waiting for an answer after: " + lastProblem;
+            if (unanswered) return "waiting for an answer after: " + lastProblem;
             return "ok";
         }
     }
@@ -214,25 +205,26 @@ public final class ProviderChain {
                 } catch (KeyRejectedException ex) {
                     log.warn(name + " refused the request (" + ex.getMessage() + "), skipping it for "
                             + REFUSED_PAUSE.getSeconds() + " seconds", null);
-                    if (state.pause(clock.instant().plus(REFUSED_PAUSE), ex.getMessage())) {
-                        alerts.problem(name + " refused the request (" + ex.getMessage() + ") and is skipped for "
-                                + REFUSED_PAUSE.getSeconds() + " seconds at a time until it answers again. "
-                                + "Lookups it would answer fail meanwhile and follow on-lookup-failure.");
-                    }
+                    state.pause(clock.instant().plus(REFUSED_PAUSE), ex.getMessage());
+                    // Alerts.Once sends this once until the provider answers again.
+                    alerts.problem("provider " + name, name + " refused the request (" + ex.getMessage() + ") and is "
+                            + "skipped for " + REFUSED_PAUSE.getSeconds() + " seconds at a time until it answers again. "
+                            + "Lookups it would answer fail meanwhile and follow on-lookup-failure.");
                     problems.add(name + ": " + ex.getMessage());
                     failed.add(name);
                     continue;
                 } catch (LookupException | RuntimeException ex) {
                     String problem = Text.message(ex);
                     if (state.failure(problem)) {
-                        alerts.problem(name + " failed " + FAILURES_BEFORE_ALERT + " lookups in a row, last: " + problem
-                                + ". Lookups it would answer fail meanwhile and follow on-lookup-failure.");
+                        alerts.problem("provider " + name, name + " failed " + FAILURES_BEFORE_ALERT + " lookups in a row, "
+                                + "last: " + problem + ". Lookups it would answer fail meanwhile and follow on-lookup-failure.");
                     }
                     problems.add(name + ": " + problem);
                     failed.add(name);
                     continue;
                 }
-                if (state.answered()) alerts.recovered(name + " answers lookups again.");
+                state.answered();
+                alerts.recovered("provider " + name, name + " answers lookups again.");
                 answers.put(name, info);
             }
             if (needsCountry && !Countries.normalize(info.countryCode()).isPresent()) {

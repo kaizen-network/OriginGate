@@ -122,14 +122,14 @@ public final class TestSupport {
         @Override public Instant instant() { return now; }
     }
 
-    /** Keeps lookup alerts so tests can check that each is sent once. */
-    public static final class RecordingAlerts implements Alerts {
+    /** Keeps the lookup alerts that {@link Alerts.Once} sends, as the controller does, so tests can count them. */
+    public static final class RecordingAlerts extends Alerts.Once {
         public final List<String> problems = new CopyOnWriteArrayList<>();
         public final List<String> recoveries = new CopyOnWriteArrayList<>();
 
-        @Override public void problem(String message) { problems.add(message); }
+        @Override protected void sendProblem(String message) { problems.add(message); }
 
-        @Override public void recovered(String message) { recoveries.add(message); }
+        @Override protected void sendRecovered(String message) { recoveries.add(message); }
     }
 
     /** Keeps warnings so tests can check them. */

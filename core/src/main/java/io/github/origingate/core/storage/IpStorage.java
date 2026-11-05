@@ -22,4 +22,13 @@ public interface IpStorage extends AutoCloseable {
     int deleteAll() throws SQLException;
 
     @Override default void close() { }
+
+    /** Saves nothing, for a system where SQLite cannot run: lookups are then kept in memory only. */
+    IpStorage NONE = new IpStorage() {
+        @Override public Optional<IpInfo> find(String ip, Instant notBefore) { return Optional.empty(); }
+        @Override public void save(IpInfo info) { }
+        @Override public int deleteOlderThan(Instant cutoff) { return 0; }
+        @Override public int delete(String ip) { return 0; }
+        @Override public int deleteAll() { return 0; }
+    };
 }

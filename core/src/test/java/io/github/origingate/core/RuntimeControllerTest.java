@@ -171,6 +171,45 @@ class RuntimeControllerTest {
         }
     }
 
+    @Test void reloadDuringAnOutageKeepsTheAlertState() throws Exception {
+        java.util.concurrent.atomic.AtomicInteger status = new java.util.concurrent.atomic.AtomicInteger(429);
+        List<String> sent = new CopyOnWriteArrayList<>();
+        try (TestServer server = new TestServer(request -> status.get() == 200
+                ? TestServer.Reply.text(200, readFixture())
+                : TestServer.Reply.text(429, "{\"status\":\"denied\",\"message\":\"test limit\"}"))) {
+            TestSupport.writeConfig(directory, "lookup.proxycheck.base-url", server.uri("/v3/").toString(),
+                    "lookup.skip-private-addresses", false);
+            try (RuntimeController controller = new RuntimeController(directory, Log.NONE,
+                    () -> OfflineModeWarning.Mode.ONLINE, (active, template, message) -> sent.add(message))) {
+                controller.reload();
+                check(controller, "192.0.2.1");
+                assertEquals(1, sent.size(), sent.toString());
+                controller.reload();
+                check(controller, "192.0.2.2");
+                assertEquals(1, sent.size(), "an outage that goes on is not announced again after a reload: " + sent);
+                // The new runtime paused the provider again; one more reload starts without that pause.
+                controller.reload();
+                status.set(200);
+                check(controller, "8.8.8.8");
+                assertEquals(2, sent.size(), sent.toString());
+                assertEquals("proxycheck answers lookups again.", sent.get(1), "the recovery is still sent after the reload");
+            }
+        }
+    }
+
+    private static String readFixture() {
+        try (java.io.InputStream input = RuntimeControllerTest.class.getResourceAsStream("/proxycheck/business-8.8.8.8.json")) {
+            return new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException ex) {
+            throw new java.io.UncheckedIOException(ex);
+        }
+    }
+
+    private static void check(RuntimeController controller, String ip) throws Exception {
+        controller.runtime().gate().check(new LoginAttempt("Alex", null, InetAddress.getByName(ip), name -> false))
+                .get(10, TimeUnit.SECONDS);
+    }
+
     @Test void bypassesGetACautionWhereNamesAreNotChecked() throws Exception {
         TestSupport.writeConfig(directory, "bypass.permissions", List.of("example.staff"));
         LoginAttempt staff = new LoginAttempt("Alex", null, InetAddress.getByName("192.0.2.1"), "example.staff"::equals);

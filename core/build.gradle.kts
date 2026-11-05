@@ -11,7 +11,18 @@ dependencies {
     testImplementation("com.google.code.gson:gson:2.10.1")
 }
 
-tasks.test { useJUnitPlatform { excludeTags("remote-database") } }
+tasks.test { useJUnitPlatform { excludeTags("remote-database", "sqlite-missing") } }
+
+// Its own JVM, with an architecture no SQLite native library exists for, so the real native lookup fails.
+val sqliteMissingTest = tasks.register<Test>("sqliteMissingTest") {
+    description = "Check that checks keep running with memory-only storage where SQLite cannot run."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("sqlite-missing") }
+    systemProperty("os.arch", "unsupported-probe")
+}
+tasks.check { dependsOn(sqliteMissingTest) }
 
 // Writes the version from gradle.properties into BuildInfo.VERSION, so it is set in one place.
 val generateBuildInfo = tasks.register("generateBuildInfo") {

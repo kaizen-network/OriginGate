@@ -50,7 +50,7 @@ class VelocityArtifactTest {
         }
     }
 
-    /** Only these SQLite natives are shipped, so every JAR fits Hangar's 10 MB upload limit (tools/publish_hangar.py). */
+    /** Only these SQLite natives are shipped, so every JAR fits Hangar's 10 MB limit per file (tools/publish_hangar.py). */
     @Test void keepsOnlyTheListedSqliteNativesAndFitsHangar() throws Exception {
         java.io.File file = new java.io.File(System.getProperty("origingate.velocityArtifact"));
         assertTrue(file.length() < 10_000_000, file.length() + " bytes");

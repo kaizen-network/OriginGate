@@ -8,7 +8,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -29,8 +28,6 @@ final class KeyRotation {
     private final Log log;
     private final AtomicInteger next = new AtomicInteger();
     private final Map<Integer, Instant> refusedUntil = new ConcurrentHashMap<>();
-    /** Keys reported as refused that have not answered since. */
-    private final Set<Integer> reported = ConcurrentHashMap.newKeySet();
     private volatile Alerts alerts = Alerts.NONE;
 
     KeyRotation(List<String> keys, String label, Clock clock, Log log) {
@@ -57,12 +54,11 @@ final class KeyRotation {
         for (int tries = 0; tries < keys.size() && index >= 0; tries++) {
             try {
                 IpInfo info = request.send(keys.get(index));
-                if (reported.remove(index)) alerts.recovered(label + " accepts API key " + (index + 1) + " again.");
+                // Alerts.Once sends each of these only when it changes.
+                alerts.recovered(keyName(index), label + " accepts API key " + (index + 1) + " again.");
                 for (Map.Entry<Integer, String> refused : refusedNow.entrySet()) {
-                    if (reported.add(refused.getKey())) {
-                        alerts.problem(label + " refused API key " + (refused.getKey() + 1) + " (" + refused.getValue()
-                                + "). The other keys are used until it is accepted again.");
-                    }
+                    alerts.problem(keyName(refused.getKey()), label + " refused API key " + (refused.getKey() + 1) + " ("
+                            + refused.getValue() + "). The other keys are used until it is accepted again.");
                 }
                 return info;
             } catch (KeyRejectedException ex) {
@@ -83,6 +79,10 @@ final class KeyRotation {
             }
         }
         throw last;
+    }
+
+    private String keyName(int index) {
+        return "key " + label + " " + (index + 1);
     }
 
     /** One line per key that is skipped right now. */

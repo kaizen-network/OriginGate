@@ -45,13 +45,14 @@ public final class RuntimeController implements AutoCloseable {
         this.directory = directory;
         this.log = log;
         this.mode = mode;
-        this.alerts = new Alerts() {
-            @Override public void problem(String message) {
+        // One Alerts.Once for the whole plugin, so a reload during an outage neither repeats it nor loses its recovery.
+        this.alerts = new Alerts.Once() {
+            @Override protected void sendProblem(String message) {
                 log.warn("Alert: " + message, null);
                 OriginGateRuntime active = runtime;
                 if (active != null) staff.send(active, active.messages().alertLookupProblem(), message);
             }
-            @Override public void recovered(String message) {
+            @Override protected void sendRecovered(String message) {
                 log.info("Alert: " + message);
                 OriginGateRuntime active = runtime;
                 if (active != null) staff.send(active, active.messages().alertLookupRecovered(), message);
@@ -99,7 +100,7 @@ public final class RuntimeController implements AutoCloseable {
     }
     private void logStarted(OriginGateRuntime next, String prefix, OfflineModeWarning.Mode current) {
         OriginGateConfig config = next.config();
-        log.info(prefix + " with " + config.storage().type() + " storage" + (config.dryRun() ? " in DRY-RUN mode (nobody is kicked)" : "") + ".");
+        log.info(prefix + " with " + next.storageName() + " storage" + (config.dryRun() ? " in DRY-RUN mode (nobody is kicked)" : "") + ".");
         log.info("Lookups: " + next.lookupSummary() + ".");
         if (config.lookup().uses("proxycheck") && config.lookup().proxycheck().apiKeys().isEmpty()) {
             log.warn("No proxycheck.io API keys are set; proxycheck.io allows 100 lookups per day without a key.", null);

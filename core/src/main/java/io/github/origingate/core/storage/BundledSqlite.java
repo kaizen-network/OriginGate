@@ -18,13 +18,16 @@ final class BundledSqlite {
 
     private BundledSqlite() { }
 
-    /** A clear error when SQLite has no native library for this system; other errors are returned unchanged. */
+    /**
+     * A {@link SqliteUnavailableException} with a clear message when SQLite has no native library for this system;
+     * other errors are returned unchanged.
+     */
     static SQLException explain(SQLException error) {
         for (Throwable cause = error; cause != null; cause = cause.getCause()) {
             String message = String.valueOf(cause.getMessage());
             if (cause.getClass().getSimpleName().equals("NativeLibraryNotFoundException") || cause instanceof UnsatisfiedLinkError
                     || message.contains("No native library found")) {
-                return new SQLException("SQLite cannot run on this system (" + System.getProperty("os.name") + ", "
+                return new SqliteUnavailableException("SQLite cannot run on this system (" + System.getProperty("os.name") + ", "
                         + System.getProperty("os.arch") + "). OriginGate includes SQLite for " + SUPPORTED
                         + ". Set storage.type to mysql to use MySQL or MariaDB instead.", error);
             }

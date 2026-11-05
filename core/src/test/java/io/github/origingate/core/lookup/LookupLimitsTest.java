@@ -73,6 +73,22 @@ class LookupLimitsTest {
         assertEquals(Addresses.sharedNetwork(FIRST), Addresses.sharedNetwork(SECOND));
         assertNull(Addresses.sharedNetwork("192.0.2.10"));
         assertNull(Addresses.sharedNetwork("not an address"));
+        // Teredo packs the Teredo server's IPv4 address (here 192.0.2.45) into the /64, so its clients share one.
+        assertNull(Addresses.sharedNetwork(text("2001:0:c000:22d:8000:1234:3fff:fdd2")));
+        assertNull(Addresses.sharedNetwork(text("2001::1")));
+        assertEquals("2001:1:0:0:0:0:0:0/64", Addresses.sharedNetwork(text("2001:1::5")), "only 2001::/32 is Teredo");
+    }
+
+    @Test void ownStoredRowComesBeforeTheSlash64Answer() throws Exception {
+        storage.rows.put(SECOND, info(SECOND, "Canada", "CA", false, false));
+        provider.answer(info(FIRST, "Canada", "CA", true, false));
+        LookupService service = service(0);
+        assertTrue(get(service.lookup(FIRST, false)).info().vpn());
+        Result own = get(service.lookup(SECOND, false));
+        assertEquals(Source.STORAGE, own.source(), "after a restart, the address's own saved row decides");
+        assertFalse(own.info().vpn());
+        assertEquals(1, provider.calls.get());
+        assertTrue(get(service.lookup(text("2001:db8:1:2::42"), false)).info().vpn(), "a neighbour without a row gets the /64 answer");
     }
 
     @Test void flaggedAddressBlocksItsSlash64NeighbourWithoutANewLookup() throws Exception {
@@ -136,43 +152,51 @@ class LookupLimitsTest {
         assertEquals(2, provider.calls.get());
     }
 
-    @Test void queuedLookupIsDroppedOnceItsLoginStoppedWaiting() throws Exception {
+    /** One worker, so the queue counts as backed up when at least one other lookup waits behind the one picked up. */
+    private void oneWorker() {
         workers.shutdownNow();
-        workers = Executors.newSingleThreadExecutor();
-        provider.answer(info("192.0.2.1", "Canada", "CA", false, false)).answer(info("192.0.2.2", "Canada", "CA", false, false));
+        workers = Executors.newFixedThreadPool(1);
+    }
+
+    @Test void staleLookupIsDroppedOnlyWhileTheQueueIsBackedUp() throws Exception {
+        oneWorker();
+        for (int i = 1; i <= 3; i++) provider.answer(info("192.0.2." + i, "Canada", "CA", false, false));
         provider.gate = new CountDownLatch(1);
         LookupService service = service(0);
         CompletableFuture<Result> running = service.lookup("192.0.2.1", false, Duration.ofSeconds(5));
-        CompletableFuture<Result> queued = service.lookup("192.0.2.2", false, Duration.ofSeconds(2));
+        CompletableFuture<Result> backedUp = service.lookup("192.0.2.2", false, Duration.ofSeconds(2));
+        CompletableFuture<Result> last = service.lookup("192.0.2.3", false, Duration.ofSeconds(2));
         clock.advance(Duration.ofSeconds(3));
         provider.gate.countDown();
         get(running);
-        Throwable dropped = failure(queued);
-        assertInstanceOf(LookupService.SkippedException.class, dropped);
-        assertEquals(1, provider.calls.get(), "the dropped lookup never reached the provider");
+        assertInstanceOf(LookupService.SkippedException.class, failure(backedUp), "another lookup waited behind it");
+        assertEquals("192.0.2.3", get(last).info().ip(), "nothing waited behind it, so it ran although its login gave up");
+        assertEquals(2, provider.calls.get());
         assertEquals(1, stats.dropped());
         assertEquals(0, stats.failed());
 
         provider.gate = null;
         assertEquals(Source.PROVIDER, get(service.lookup("192.0.2.2", false, Duration.ofSeconds(2))).source(),
                 "a new login starts a new lookup");
+        assertEquals(Source.MEMORY, get(service.lookup("192.0.2.3", false)).source(), "the late answer filled the cache");
     }
 
     @Test void queuedLookupIsKeptWhileAnyCallerStillWaits() throws Exception {
-        workers.shutdownNow();
-        workers = Executors.newSingleThreadExecutor();
-        provider.answer(info("192.0.2.1", "Canada", "CA", false, false)).answer(info("192.0.2.2", "Canada", "CA", false, false));
+        oneWorker();
+        for (int i = 1; i <= 3; i++) provider.answer(info("192.0.2." + i, "Canada", "CA", false, false));
         provider.gate = new CountDownLatch(1);
         LookupService service = service(0);
         CompletableFuture<Result> running = service.lookup("192.0.2.1", false, Duration.ofSeconds(5));
         CompletableFuture<Result> expired = service.lookup("192.0.2.2", false, Duration.ofSeconds(1));
         CompletableFuture<Result> command = service.lookup("192.0.2.2", false);
+        CompletableFuture<Result> behind = service.lookup("192.0.2.3", false, Duration.ofSeconds(1));
         clock.advance(Duration.ofSeconds(3));
         provider.gate.countDown();
         get(running);
         assertEquals("192.0.2.2", get(expired).info().ip());
-        assertEquals("192.0.2.2", get(command).info().ip());
-        assertEquals(2, provider.calls.get());
+        assertEquals("192.0.2.2", get(command).info().ip(), "a caller without a time limit keeps it, even with a backlog");
+        get(behind);
+        assertEquals(3, provider.calls.get());
     }
 
     @Test void budgetLimitsProviderLookupsAndAlertsOnce() throws Exception {
@@ -197,6 +221,31 @@ class LookupLimitsTest {
         assertEquals(1, alerts.recoveries.size());
         assertTrue(alerts.recoveries.get(0).contains("2 new addresses were not checked"), alerts.recoveries.get(0));
         assertEquals(1, alerts.problems.size());
+    }
+
+    @Test void steadyFloodSendsOneBudgetAlertAndRecoversAfterAQuietMinute() throws Exception {
+        for (int i = 1; i <= 200; i++) provider.answer(info("192.0.2." + i, "Canada", "CA", false, false));
+        LookupService service = service(2);
+        int over = 0;
+        // 6 new addresses a minute for 5 minutes against a limit of 2: a slot frees now and then, the flood goes on.
+        for (int i = 1; i <= 30; i++) {
+            CompletableFuture<Result> lookup = service.lookup("192.0.2." + i, false);
+            try {
+                lookup.get(10, TimeUnit.SECONDS);
+            } catch (ExecutionException ex) {
+                over++;
+            }
+            clock.advance(Duration.ofSeconds(10));
+        }
+        assertTrue(over > 10, over + " over the budget");
+        assertTrue(provider.calls.get() > 2, "some slots freed during the flood");
+        assertEquals(1, alerts.problems.size(), alerts.problems.toString());
+        assertTrue(alerts.recoveries.isEmpty(), "no recovery while logins are still over the budget: " + alerts.recoveries);
+
+        clock.advance(Duration.ofSeconds(61));
+        get(service.lookup("192.0.2.100", false));
+        assertEquals(1, alerts.recoveries.size());
+        assertTrue(alerts.recoveries.get(0).contains(over + " new addresses were not checked"), alerts.recoveries.get(0));
     }
 
     @Test void zeroMeansNoBudget() throws Exception {
