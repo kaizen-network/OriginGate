@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 (unreleased)
+
+### Added
+
+- Anonymous usage statistics through [bStats](https://bstats.org) on Bukkit, BungeeCord, and Velocity. No player names, UUIDs, or IP addresses are sent. See [storage and privacy](docs/storage-and-privacy.md#bstats) for what is sent and how to turn it off.
+
 ## 0.2.0 (2026-10-29)
 
 Adds Bukkit, Spigot, Paper, and BungeeCord. See [compatibility](docs/compatibility.md) for tested builds and limits.
