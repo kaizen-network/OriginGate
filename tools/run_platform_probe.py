@@ -230,17 +230,18 @@ def run_110():
     stub.set('clean',2.5);command('origingate cache clear all','Cleared');requests=len(stub.requests)
     outcomes=[]
     def flood(i):outcomes.append(login('FloodProbe'+str(i),False,'127.0.0.'+str(10+i))[0])
-    threads=[threading.Thread(target=flood,args=(i,)) for i in range(8)]
+    threads=[threading.Thread(target=flood,args=(i,)) for i in range(12)]
     for t in threads:t.start()
     for t in threads:t.join(30)
-    time.sleep(4)
+    time.sleep(7)
     sent=len(stub.requests)-requests
     status=command('origingate status','On lookup failure:')
-    assert outcomes==['joined']*8,outcomes
-    assert sent==4,(sent,status)
+    assert outcomes==['joined']*12,outcomes
+    # 4 run, 8 queue; the first 4 picked up while 4 or more wait behind them are dropped, the last 4 still run.
+    assert sent==8,(sent,status)
     assert '4 dropped after every login stopped waiting' in status,status
     print(status,flush=True)
-    passed('8 addresses at once with 4 workers: 4 lookups ran, the 4 queued past their login wait were dropped unsent')
+    passed('12 addresses at once with 4 workers: the 4 queued lookups picked up while backed up were dropped, the last 4 still ran')
 def forwarding_checks():
     """Paper only: no warning behind Velocity modern forwarding, a warning behind BungeeCord IP forwarding."""
     global_config=RUN/'config/paper-global.yml';spigot=RUN/'spigot.yml'

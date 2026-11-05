@@ -11,7 +11,7 @@
 - Lookup order (memory, storage, provider), one request per IP, expiry, the answer arriving before the save, the 60-second storage pause, the 5-minute pause after a result without country, a refresh never joining a normal lookup, full queue
 - Lookup failure and timeout in both `on-lookup-failure` modes, dry-run, console log levels
 - IPv6: a flagged answer turning away its /64 neighbour without a lookup, a clean answer never shared, neighbours looked up at once getting their own lookups, the no-country pause per address
-- Dropping a queued lookup once its login stopped waiting, keeping it while any caller still waits, the lookups-per-minute budget with one alert and one recovery, `on-budget-exceeded` and its fallback to `on-lookup-failure`, and the status counters
+- Dropping a queued lookup once its login stopped waiting, but only while the queue is backed up, keeping it while any caller still waits, the lookups-per-minute budget with one alert and one recovery, `on-budget-exceeded` and its fallback to `on-lookup-failure`, and the status counters
 - Provider health: one alert on a pause and none while it stays paused, one after 3 failures in a row, one recovery, refused API keys, and the `status` lines
 - The offline-mode warning for each server mode (only owner-set `bypass.players` and `bypass.permissions` count; BungeeCord IP forwarding always gets one line), the caution on name and permission bypasses, and a real runtime sending one staff alert when a stub provider answers 429
 - The SQLite error message on a system without a bundled native library
@@ -41,7 +41,7 @@ python tools/run_platform_probe.py paper --server path/to/paper.jar --bukkit-api
 
 Paper and newer Spigot tests use a local `minecraft-protocol` Node dependency through `--modules`. Choose a compatible `--client-version`. Paper 1.21.7 and 1.21.8 share a protocol. For simultaneous test servers, choose distinct `--port` and `--run-name` values. The Bungee probe also uses the next port for a dummy backend and checks that another plugin cannot route a denied player there.
 
-Both probes also check the 1.1.0 changes: the offline-mode warning for the probe's `bypass.permissions` and the caution on a used bypass; the unchanged 1.0.0 `config.yml` and `messages.yml` loading; the hosting rule; the lookup budget with `on-lookup-failure` and `on-budget-exceeded`; one alert after 3 failures in a row and one recovery; one alert for a provider paused by HTTP 429, no request while it is paused, and one recovery after the 60-second pause; `origingate status`; and 8 logins at once from 8 loopback addresses (`127.0.0.10` to `127.0.0.17`), where 4 lookups run and the 4 queued past their login's wait are dropped without a request. On Paper, a second client (`tools/platform_staff_client.cjs`) stays online with `origingate.alerts` and must receive the pause and recovery alerts in chat, and the server is restarted twice: behind Velocity modern forwarding there is no warning, behind BungeeCord IP forwarding there is one. The pause check waits 61 seconds.
+Both probes also check the 1.1.0 changes: the offline-mode warning for the probe's `bypass.permissions` and the caution on a used bypass; the unchanged 1.0.0 `config.yml` and `messages.yml` loading; the hosting rule; the lookup budget with `on-lookup-failure` and `on-budget-exceeded`; one alert after 3 failures in a row and one recovery; one alert for a provider paused by HTTP 429, no request while it is paused, and one recovery after the 60-second pause; `origingate status`; and 12 logins at once from 12 loopback addresses (`127.0.0.10` to `127.0.0.21`): 4 lookups run, the next 4 are picked up while 4 or more wait behind them and are dropped without a request, and the last 4 still run. On Paper, a second client (`tools/platform_staff_client.cjs`) stays online with `origingate.alerts` and must receive the pause and recovery alerts in chat, and the server is restarted twice: behind Velocity modern forwarding there is no warning, behind BungeeCord IP forwarding there is one. The pause check waits 61 seconds.
 
 ## Docs check
 
@@ -129,7 +129,9 @@ Checks:
 19. Over `max-lookups-per-minute`, a login follows `on-lookup-failure`, or `on-budget-exceeded: deny` when set, with one alert.
 20. 3 failed lookups in a row send one alert, and the next answer one recovery alert.
 21. A provider refused with HTTP 429 sends one alert, is not asked while paused, and sends one recovery alert after the 60-second pause.
-22. 8 logins at once from 8 loopback addresses run 4 lookups and drop the 4 queued past their login's wait.
+22. 12 logins at once from 12 loopback addresses: 8 lookups run and 4, picked up while the queue was backed up, are dropped.
+
+`--no-sqlite` instead starts the proxy with an `os.arch` no SQLite native library exists for, and checks that logins are still checked with memory-only storage, also after a reload.
 
 ### ConsentGate compatibility run
 

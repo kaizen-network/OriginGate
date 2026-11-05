@@ -306,6 +306,7 @@ class Probe:
         self.process = None
         self.log_file = PROXY / "logs" / "latest.log"
         self.passed = 0
+        self.jvm_options = []
 
     def write_config(self, dry_run=False, failure="allow", wait=3000, request_timeout=2500, deny=False, country=False,
                      console_log="all", raw=None, extra_lookup="", extra_rules=""):
@@ -348,7 +349,7 @@ class Probe:
 
     def start(self):
         self.process = subprocess.Popen(
-            ["java", "-Xms128m", "-Xmx384m", "-Dterminal.jline=false", "-jar", "velocity.jar"],
+            ["java", "-Xms128m", "-Xmx384m", "-Dterminal.jline=false"] + self.jvm_options + ["-jar", "velocity.jar"],
             cwd=PROXY, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, text=True,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
         deadline = time.monotonic() + 60
@@ -652,16 +653,18 @@ def run_110(probe, backend):
         finally:
             client.close()
 
-    threads = [threading.Thread(target=login, args=(i,)) for i in range(8)]
+    threads = [threading.Thread(target=login, args=(i,)) for i in range(12)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(20)
-    time.sleep(4)
-    assert outcomes == ["joined"] * 8, outcomes
+    time.sleep(7)
+    assert outcomes == ["joined"] * 12, outcomes
     sent = len(stub.requests) - requests
     status = probe.command("origingate status", "On lookup failure:")
-    assert sent == 4, f"{sent} provider requests for 8 addresses with 4 workers; the queued 4 should have been dropped"
+    # 4 run at once and 8 queue. The first 4 picked up still have 4 or more behind them: backed up, dropped. The last
+    # 4 have fewer behind them, so they run although their logins gave up, and fill the cache as in 1.0.0.
+    assert sent == 8, f"{sent} provider requests for 12 addresses with 4 workers; 4 queued ones should have been dropped"
     assert "4 dropped after every login stopped waiting" in status, status
     # The 8 logins were let in, so the proxy connected each to the backend; clear those connections.
     backend.settimeout(0.5)
@@ -671,8 +674,21 @@ def run_110(probe, backend):
             connection.close()
         except (TimeoutError, OSError):
             break
-    probe.ok("8 addresses at once with 4 workers: 4 lookups ran, the 4 queued past their login's wait were dropped unsent")
+    probe.ok("12 addresses at once with 4 workers: the 4 queued lookups picked up while backed up were dropped, the last 4 still ran")
     print(status, flush=True)
+
+
+def run_without_sqlite(probe, backend):
+    """The proxy runs with an os.arch no SQLite native library exists for, like an unsupported system."""
+    assert "SQLite cannot run on this system" in probe.log_text(), "no SQLite error at startup"
+    probe.fresh("clean")
+    expect_join(backend, "ProbeNoSqlite")
+    probe.fresh("vpn")
+    expect_kick(backend, "ProbeNoSqliteVpn", "VPN connections are not allowed")
+    status = probe.command("origingate status", "On lookup failure:")
+    assert "Storage: memory-only (SQLite cannot run on this system)" in status, status
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.ok("without a SQLite native library, checks keep running with memory-only storage, also after a reload")
 
 
 def main():
@@ -680,6 +696,7 @@ def main():
     parser.add_argument("--consentgate", type=pathlib.Path, help="ConsentGate Velocity JAR for the compatibility run")
     parser.add_argument("--packetevents", type=pathlib.Path, help="PacketEvents Velocity JAR, required by ConsentGate")
     parser.add_argument("--port", type=int, default=25590, help="Proxy port in velocity.toml; the backend listener uses the next one")
+    parser.add_argument("--no-sqlite", action="store_true", help="Start the proxy as on a system SQLite cannot run on")
     args = parser.parse_args()
     global PROXY_PORT, BACKEND_PORT
     PROXY_PORT, BACKEND_PORT = args.port, args.port + 1
@@ -724,16 +741,21 @@ def main():
 
     stub = Stub()
     probe = Probe(stub, uuid.uuid4().hex)
+    if args.no_sqlite:
+        probe.jvm_options = ["-Dos.arch=unsupported-probe"]
     probe.write_config()
     try:
         with socket.socket() as backend:
             backend.bind(("127.0.0.1", BACKEND_PORT))
             backend.listen()
             probe.start()
-            probe.wait_log("OriginGate is running with sqlite storage", seconds=30)
-            run(probe, backend, consentgate)
-            if not consentgate:
-                run_110(probe, backend)
+            probe.wait_log("OriginGate is running with " + ("memory-only" if args.no_sqlite else "sqlite") + " storage", seconds=30)
+            if args.no_sqlite:
+                run_without_sqlite(probe, backend)
+            else:
+                run(probe, backend, consentgate)
+                if not consentgate:
+                    run_110(probe, backend)
         print(f"All {probe.passed} probe checks passed.", flush=True)
     finally:
         probe.stop()
