@@ -14,11 +14,13 @@ OriginGate checks where each player connects from on Bukkit/Spigot/Paper, Bungee
 
 | Platform | Requirement | JAR |
 | --- | --- | --- |
-| Bukkit / Spigot / Paper | Minecraft 1.7.2 or newer, Java 8 or newer (also meet your server's Java requirement) | `OriginGate-Bukkit-<version>.jar` |
+| Bukkit / Spigot / Paper / Purpur | Minecraft 1.7.2 or newer, Java 8 or newer (also meet your server's Java requirement) | `OriginGate-Bukkit-<version>.jar` |
 | BungeeCord / Waterfall | 1.21-R0.4 API or newer with asynchronous `PostLoginEvent`, Java 8 or newer (current BungeeCord and Waterfall builds need Java 17) | `OriginGate-BungeeCord-<version>.jar` |
 | Velocity | 3.4.0 or newer, Java 21 or newer | `OriginGate-Velocity-<version>.jar` |
 
 See [compatibility](docs/compatibility.md) for tested builds and the reconnect requirement on old offline-mode CraftBukkit.
+
+SQLite storage runs on Linux (x86_64 and aarch64, glibc and musl), Windows (x86_64 and aarch64), and macOS (x86_64 and aarch64). Elsewhere, use MySQL or MariaDB; see [compatibility](docs/compatibility.md#sqlite).
 
 A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day; a free account raises that to 1,000.
 

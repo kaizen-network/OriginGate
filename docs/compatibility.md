@@ -59,7 +59,7 @@ The plugin JARs include SQLite for these systems only:
 | Windows | x86_64, aarch64 |
 | macOS | x86_64 (Intel), aarch64 (Apple silicon) |
 
-On any other system (32-bit, ARMv7, FreeBSD, and others), SQLite cannot start, and OriginGate logs an error that names these systems and does not check connections. Set `storage.type: mysql` to use MySQL or MariaDB there. The other systems were left out in 1.1.0 so that every JAR is under 10 MB.
+On any other system (32-bit, ARMv7, FreeBSD, and others), SQLite cannot start. OriginGate then keeps checking connections, but keeps lookups in memory only, so they are looked up again after a restart, and logs an error at startup and reload that names these systems. `origingate status` shows `Storage: memory-only`. Set `storage.type: mysql` to use MySQL or MariaDB there. The other systems were left out in 1.1.0 so that every JAR is under 10 MB.
 
 ## Offline mode and forwarding
 

@@ -18,7 +18,7 @@ See [compatibility](compatibility.md) for tested builds and the reconnect requir
 
 A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day; a free account raises that to 1,000. Other providers are optional; see [providers](providers.md).
 
-SQLite and MySQL/MariaDB support are bundled. On a proxy network, install at the proxy entry point. If installed on a backend instead, configure trusted IP forwarding so OriginGate sees the player's actual IP.
+SQLite and MySQL/MariaDB support are bundled. SQLite runs on Linux (x86_64 and aarch64, glibc and musl), Windows (x86_64 and aarch64), and macOS (x86_64 and aarch64); on other systems use MySQL or MariaDB (see [compatibility](compatibility.md#sqlite)). On a proxy network, install at the proxy entry point. If installed on a backend instead, configure trusted IP forwarding so OriginGate sees the player's actual IP.
 
 ## Install
 

@@ -12,7 +12,7 @@ On Linux or macOS, run `./gradlew build`. `build` contacts no remote database an
 
 Outputs are `platform-bukkit/build/libs/OriginGate-Bukkit-<version>.jar`, `platform-bungeecord/build/libs/OriginGate-BungeeCord-<version>.jar`, and `platform-velocity/build/libs/OriginGate-Velocity-<version>.jar`. Each bundles the shared core and its dependencies. See [dependency notices](../../THIRD_PARTY_NOTICES.md) for packaging details.
 
-The root `build.gradle.kts` keeps only 8 of sqlite-jdbc's 20 native libraries in every plugin JAR (Linux and musl Linux on x86_64 and aarch64, Windows and macOS on x86_64 and aarch64), which keeps each JAR under Hangar's 10 MB upload limit. `BundledSqlite.SUPPORTED` and the compatibility page list the same systems, and the artifact tests check both the list and the size.
+The root `build.gradle.kts` keeps only 8 of sqlite-jdbc's 20 native libraries in every plugin JAR (Linux and musl Linux on x86_64 and aarch64, Windows and macOS on x86_64 and aarch64), which keeps each JAR under Hangar's 10 MB limit per file. Together the three JARs are still over Hangar's 15 MB limit per upload, which `publish_hangar.py` handles (see [Hangar](#hangar)). `BundledSqlite.SUPPORTED` and the compatibility page list the same systems, and the artifact tests check both the list and the size.
 
 The version is set only in `gradle.properties`. The build writes it into the generated `BuildInfo` class, which the plugin descriptor and the probe also use.
 
@@ -54,7 +54,7 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 
 `hangar.yml` runs `tools/publish_hangar.py`. It reads a Hangar API key from the `HANGAR_TOKEN` repository secret. The key needs the `view_public_info` (to check whether the version is already uploaded), `create_version`, and `edit_page` permissions.
 
-All three JARs go into one Hangar version. Hangar accepts files up to 10 MB, so a bigger JAR is listed as a direct link to its GitHub release download. `tools/hangar.json` sets each JAR's platform and oldest supported version:
+All three JARs go into one Hangar version. Hangar accepts files up to 10 MB each and less than 15 MB in one upload. A JAR over 10 MB, and then the largest of the others until the rest total less than 15 MB, is listed as a direct link to its GitHub release download instead. For 1.1.0 (about 7.8, 7.8, and 6.9 MB) that links the Bukkit JAR and uploads the other two. `tools/hangar.json` sets each JAR's platform and oldest supported version:
 
 | JAR | Hangar platform | From |
 | --- | --- | --- |

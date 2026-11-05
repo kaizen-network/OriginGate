@@ -1,6 +1,6 @@
 ![OriginGate: VPN, proxy, and country checks at login](https://kaizenmc.id/api/software/assets/origingate/docs/images/banner.webp)
 
-Kick players who connect through a VPN or proxy, or from a country you do not allow. OriginGate runs on Bukkit, Spigot, Paper, BungeeCord, and Velocity, and the check finishes before a player enters the world or reaches a backend server.
+Kick players who connect through a VPN or proxy, or from a country you do not allow. OriginGate runs on Bukkit, Spigot, Paper, Purpur, BungeeCord, Waterfall, and Velocity, and the check finishes before a player enters the world or reaches a backend server.
 
 ## Features
 
@@ -17,7 +17,8 @@ Kick players who connect through a VPN or proxy, or from a country you do not al
 
 Each platform has its own file. Download the one for yours.
 
-- Bukkit, Spigot, or Paper: Minecraft 1.7.2 or newer, on Java 8 or newer. Folia is not supported.
+- Bukkit, Spigot, Paper, or Purpur: Minecraft 1.7.2 or newer, on Java 8 or newer. Folia is not supported.
+- SQLite storage runs on Linux (x86_64 and aarch64, glibc and musl), Windows (x86_64 and aarch64), and macOS (x86_64 and aarch64). Elsewhere, use MySQL or MariaDB.
 - BungeeCord or Waterfall: API 1.21-R0.4 or newer, on Java 8 or newer. Current BungeeCord and Waterfall builds need Java 17 or newer.
 - Velocity 3.4.0 or newer, on Java 21 or newer.
 - A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day; a free account raises that to 1,000.

@@ -33,9 +33,9 @@ A `bypass.addresses` entry wins over a `deny-addresses` entry.
 3. The [lookup providers](providers.md).
 
 - Only one request per IP runs at a time. Other logins from the same IP wait for it. `origingate check <ip> refresh` always makes its own request.
-- Answers are kept per address. An IPv6 answer that a rule acts on (deny-networks, VPN, proxy, hosting, or a country your country rule turns away) is also kept for the address's whole /64, so the next address in that /64 is turned away from memory without a new lookup. This means a player can be kicked because another address in their /64 was flagged, without their own address being looked up; OriginGate 1.0.0 would have looked it up on its own. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it at will. A clean answer is never shared this way, because some hosts split one /64 between many customers, and one customer's clean address must not let a neighbour in.
+- Answers are kept per address, and an address's own answer in memory or storage always comes first. An IPv6 answer that a rule acts on (deny-networks, VPN, proxy, hosting, or a country your country rule turns away) is also kept for the address's whole /64, so the next address in that /64 is turned away from memory without a new lookup. This means a player can be kicked because another address in their /64 was flagged, without their own address being looked up; OriginGate 1.0.0 would have looked it up on its own. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it at will. A clean answer is never shared this way, because some hosts split one /64 between many customers, and one customer's clean address must not let a neighbour in. Teredo addresses (`2001::/32`) are never shared, since all clients of a Teredo server have one /64.
 - Lookups run on 4 worker threads with a queue of 256. When the queue is full, the lookup fails and `on-lookup-failure` applies.
-- A lookup still waiting in the queue when every login that asked for it has stopped waiting (after `wait-millis`) is dropped without asking a provider, so a burst of logins does not spend quota on answers nobody uses.
+- A lookup still waiting in the queue when every login that asked for it has stopped waiting (after `wait-millis`) is dropped without asking a provider while the queue is backed up (when it is picked up, at least as many lookups wait behind it as there are workers, which is 4), so a burst of logins does not spend quota on answers nobody uses. Without a backlog it still runs, as in 1.0.0, so the player's next join is answered from the cache.
 - With `max-lookups-per-minute`, provider lookups over that many in 60 seconds are not sent, and the login follows `on-budget-exceeded`. Answers from memory and storage do not count.
 - A new result goes to the waiting login first and is saved afterwards, so a slow database does not hold the login.
 - When a storage read or save fails, storage is skipped for 60 seconds and lookups go straight to the providers. A dead database does not use up `wait-millis` on every login.
@@ -46,7 +46,7 @@ A `bypass.addresses` entry wins over a `deny-addresses` entry.
 - `on-lookup-failure: allow` lets the player in when the lookup fails or times out. `deny` kicks them with the `lookup-failure` message.
 - A login over `max-lookups-per-minute` follows `on-budget-exceeded`, or `on-lookup-failure` when that is not set.
 - On reload, logins that already started finish with the previous settings.
-- `dry-run: true` runs everything and logs `WOULD-DENY` instead of kicking. No chat notices or staff alerts are sent in dry-run.
+- `dry-run: true` runs everything and logs `WOULD-DENY` instead of kicking. Bypass notices and the staff alerts for kicks and bypasses are not sent in dry-run. Lookup problem and recovery alerts are, since a failing provider matters while you test.
 
 ## Alerts and status
 
@@ -55,9 +55,9 @@ Staff with an alert permission get one chat message when lookups start failing, 
 - a provider is paused after refusing a request (HTTP 401, 403, or 429, or a `denied` status, such as a used-up daily quota)
 - a provider fails 3 lookups in a row (timeouts or server errors). It is still asked on every lookup
 - an API key is refused while the provider's other keys still work
-- `max-lookups-per-minute` is reached
+- `max-lookups-per-minute` is reached. Its recovery is sent after a full minute without a login over the limit, so a steady flood sends one message, not one per freed slot
 
-The same messages are logged to the console as `Alert: ...`. After a reload, a provider that is still down is reported once more. `origingate status` shows the counters, the budget, and each provider's state at any time.
+The same messages are logged to the console as `Alert: ...`. A reload keeps this state: an outage that goes on is not announced again, and its recovery still arrives. `origingate status` shows the counters, the budget, and each provider's state at any time.
 
 ## Logging
 

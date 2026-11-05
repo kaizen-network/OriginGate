@@ -116,9 +116,9 @@ During a bot flood, every new address costs one provider lookup. With a limit, l
 - Not set (the default): the same as `on-lookup-failure`, so with `allow` those players get in unchecked, as they would when the provider is down.
 - `deny`: those players are kicked with the `lookup-failure` message and can join again once the flood is over. Players looked up within `storage.max-age-days` are still answered from memory or storage and are not affected. Use it as an attack mode while you are being flooded.
 
-Staff with an alert permission get one message when the limit is reached and one when it has room again, with how many addresses went unchecked. `origingate status` shows how much of the limit the last minute used.
+Staff with an alert permission get one message when the limit is reached and one after a full minute without a login over it, with how many addresses went unchecked. `origingate status` shows how much of the limit the last minute used.
 
-Separately from the limit, and always on: a lookup still queued when every login waiting for it has given up (after `wait-millis`) is dropped without asking a provider, so a burst of logins does not spend lookups on answers nobody uses.
+Separately from the limit, and always on: a lookup still queued when every login waiting for it has given up (after `wait-millis`) is dropped without asking a provider while the queue is backed up (when it is picked up, at least as many lookups wait behind it as there are workers, which is 4), so a burst of logins does not spend lookups on answers nobody uses. In normal traffic a late lookup still runs and fills the cache, as in 1.0.0.
 
 ### Country rules only, no web requests
 
