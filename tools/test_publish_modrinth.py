@@ -48,7 +48,7 @@ class PublishModrinthTest(unittest.TestCase):
         self.assertTrue(config['project'])
         for entry in config['files']:
             self.assertIn('{version}', entry['pattern'])
-            self.assertTrue(set(entry['loaders']) <= {'paper', 'purpur', 'folia', 'spigot', 'bukkit', 'velocity', 'bungeecord'})
+            self.assertTrue(set(entry['loaders']) <= {'paper', 'purpur', 'folia', 'spigot', 'bukkit', 'velocity', 'bungeecord', 'waterfall'})
 
 
 if __name__ == '__main__':
