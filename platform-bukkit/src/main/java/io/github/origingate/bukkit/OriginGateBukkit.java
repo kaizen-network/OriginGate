@@ -160,8 +160,9 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         String ip = Addresses.text(attempt.address());
         if (preLoginSeen) {
             // The prefetched result was dropped (every slot was in use), so only a cached answer avoids on-lookup-failure.
-            // Nobody waits for this one; as in 1.0.0 it still runs, so the player's next join is answered from the cache.
-            CompletableFuture<LookupService.Result> lookup = active.gate().lookups().lookup(ip, false);
+            // Nobody waits for this one. As in 1.0.0 it runs, so the next join is answered from the cache, but while the
+            // queue is backed up it is dropped like any lookup whose login stopped waiting.
+            CompletableFuture<LookupService.Result> lookup = active.gate().lookups().lookup(ip, false, Duration.ZERO);
             if (!lookup.isDone()) return active.gate().finish(attempt, null, new IllegalStateException("too many connections were being checked"));
             return finished(active, attempt, lookup);
         }

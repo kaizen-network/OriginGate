@@ -77,6 +77,58 @@ class LookupLimitsTest {
         assertNull(Addresses.sharedNetwork(text("2001:0:c000:22d:8000:1234:3fff:fdd2")));
         assertNull(Addresses.sharedNetwork(text("2001::1")));
         assertEquals("2001:1:0:0:0:0:0:0/64", Addresses.sharedNetwork(text("2001:1::5")), "only 2001::/32 is Teredo");
+        // NAT64 well-known prefixes map IPv4 (here 192.0.2.45) into a few /64s.
+        assertNull(Addresses.sharedNetwork(text("64:ff9b::c000:22d")));
+        assertNull(Addresses.sharedNetwork(text("64:ff9b:1:abcd::c000:22d")));
+        assertEquals("64:ff9b:2:0:0:0:0:0/64", Addresses.sharedNetwork(text("64:ff9b:2::1")), "only the two well-known prefixes");
+    }
+
+    @Test void unreadableStorageAsksTheProviderBeforeUsingTheSlash64Answer() throws Exception {
+        provider.answer(info(FIRST, "Canada", "CA", true, false)).answer(info(SECOND, "Canada", "CA", false, false));
+        LookupService service = service(0);
+        assertTrue(get(service.lookup(FIRST, false)).info().vpn());
+        storage.broken = true;
+        Result own = get(service.lookup(SECOND, false));
+        assertEquals(Source.PROVIDER, own.source(), "storage may hold this address's own row, so the provider is asked");
+        assertFalse(own.info().vpn());
+        String third = text("2001:db8:1:2::33");
+        failure(service.lookup(third, false));
+        assertTrue(service.networkFallback(third).orElseThrow().info().vpn(), "when that lookup fails, the /64 answer is the fallback");
+        assertEquals(third, service.networkFallback(third).orElseThrow().info().ip());
+        assertTrue(service.networkFallback("192.0.2.1").isEmpty());
+    }
+
+    @Test void lookupWithoutAWaiterIsDroppedOnlyWhileBackedUp() throws Exception {
+        oneWorker();
+        for (int i = 1; i <= 4; i++) provider.answer(info("192.0.2." + i, "Canada", "CA", false, false));
+        provider.gate = new CountDownLatch(1);
+        LookupService service = service(0);
+        CompletableFuture<Result> running = service.lookup("192.0.2.1", false, Duration.ofSeconds(5));
+        CompletableFuture<Result> background = service.lookup("192.0.2.2", false, Duration.ZERO);
+        CompletableFuture<Result> waiting = service.lookup("192.0.2.3", false, Duration.ofSeconds(30));
+        CompletableFuture<Result> lastBackground = service.lookup("192.0.2.4", false, Duration.ZERO);
+        provider.gate.countDown();
+        get(running);
+        assertInstanceOf(LookupService.SkippedException.class, failure(background), "two lookups waited behind it");
+        assertEquals("192.0.2.3", get(waiting).info().ip());
+        assertEquals("192.0.2.4", get(lastBackground).info().ip(), "nothing waited behind it, so it ran and filled the cache");
+        assertEquals(3, provider.calls.get());
+    }
+
+    @Test void budgetStateOutlivesAReload() throws Exception {
+        for (int i = 1; i <= 5; i++) provider.answer(info("192.0.2." + i, "Canada", "CA", false, false));
+        LookupService before = service(1);
+        get(before.lookup("192.0.2.1", false));
+        failure(before.lookup("192.0.2.2", false));
+        assertEquals(1, alerts.problems.size());
+        clock.advance(Duration.ofSeconds(30));
+        LookupService reloaded = service(1);
+        get(reloaded.lookup("192.0.2.3", false));
+        assertTrue(alerts.recoveries.isEmpty(), "the new runtime's empty budget is not a quiet minute: " + alerts.recoveries);
+        clock.advance(Duration.ofSeconds(61));
+        get(reloaded.lookup("192.0.2.4", false));
+        assertEquals(1, alerts.recoveries.size());
+        assertTrue(alerts.recoveries.get(0).contains("1 new addresses were not checked"), alerts.recoveries.get(0));
     }
 
     @Test void ownStoredRowComesBeforeTheSlash64Answer() throws Exception {

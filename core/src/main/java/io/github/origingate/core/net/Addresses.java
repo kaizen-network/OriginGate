@@ -41,7 +41,7 @@ public final class Addresses {
 
     /**
      * The /64 network of an IPv6 address, written like {@code 2001:db8:0:0:0:0:0:0/64}, or null for IPv4, for Teredo
-     * addresses, and for text that is not an IP literal. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it.
+     * and well-known NAT64 addresses, and for text that is not an IP literal. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it.
      */
     public static String sharedNetwork(String ip) {
         Optional<InetAddress> parsed = parse(ip);
@@ -49,6 +49,13 @@ public final class Addresses {
         byte[] bytes = parsed.get().getAddress();
         // Teredo (2001::/32) packs the Teredo server's IPv4 address into the /64, so all its clients share one.
         if (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0 && bytes[3] == 0) return null;
+        // NAT64 well-known prefixes 64:ff9b::/96 and 64:ff9b:1::/48 map all of IPv4 into a few /64s.
+        // Network-specific NAT64 prefixes cannot be told apart from ordinary addresses.
+        if (bytes[0] == 0 && bytes[1] == 0x64 && bytes[2] == (byte) 0xff && bytes[3] == (byte) 0x9b) {
+            boolean wellKnown = true;
+            for (int i = 4; i < 12; i++) wellKnown &= bytes[i] == 0;
+            if (wellKnown || (bytes[4] == 0 && bytes[5] == 1)) return null;
+        }
         for (int i = 8; i < bytes.length; i++) bytes[i] = 0;
         try {
             return text(InetAddress.getByAddress(bytes)) + "/64";

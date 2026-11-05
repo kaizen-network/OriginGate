@@ -19,6 +19,8 @@ public final class LookupStats {
     private final AtomicLong failed = new AtomicLong();
     private final AtomicLong dropped = new AtomicLong();
     private final AtomicLong overBudget = new AtomicLong();
+    private final AtomicLong skippedByBudget = new AtomicLong();
+    private volatile Instant lastOverBudget;
     /** Requests per provider name on {@link #day}. Guarded by this. */
     private final Map<String, Long> requestsToday = new HashMap<>();
     private LocalDate day;
@@ -43,7 +45,18 @@ public final class LookupStats {
 
     void countDropped() { dropped.incrementAndGet(); }
 
-    void countOverBudget() { overBudget.incrementAndGet(); }
+    /** One login over the budget. Kept here rather than per runtime, so a reload during a flood does not end it. */
+    void countOverBudget(Instant now) {
+        overBudget.incrementAndGet();
+        skippedByBudget.incrementAndGet();
+        lastOverBudget = now;
+    }
+
+    /** When a login was last over the budget, or null. */
+    Instant lastOverBudget() { return lastOverBudget; }
+
+    /** Logins over the budget since the last call. */
+    long takeSkippedByBudget() { return skippedByBudget.getAndSet(0); }
 
     /** One request sent to {@code name}, counted for today in the server's time zone. */
     synchronized void requested(String name) {

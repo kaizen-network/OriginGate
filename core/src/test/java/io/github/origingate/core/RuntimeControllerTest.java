@@ -210,6 +210,26 @@ class RuntimeControllerTest {
                 .get(10, TimeUnit.SECONDS);
     }
 
+    @Test void anySqliteOpenFailureFallsBackToMemoryOnly() throws Exception {
+        TestSupport.writeConfig(directory, "rules.deny-addresses.enabled", true,
+                "rules.deny-addresses.list", List.of("192.0.2.0/24"));
+        // A folder where the database file should be: SQLite cannot open it.
+        Files.createDirectories(directory.resolve("data/origingate.db"));
+        List<String> lines = new CopyOnWriteArrayList<>();
+        try (RuntimeController controller = new RuntimeController(directory, recording(lines))) {
+            controller.reload();
+            OriginGateRuntime runtime = controller.runtime();
+            assertNotNull(runtime, "checks must keep running: " + lines);
+            assertEquals("memory-only", runtime.storageName());
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("Could not open the SQLite file")
+                    && line.contains("keeps checking connections")), lines.toString());
+            assertTrue(runtime.status().stream().anyMatch(line -> line.contains("Storage: memory-only (the SQLite file could not be opened)")));
+            Decision denied = runtime.gate().check(new LoginAttempt("Alex", null, InetAddress.getByName("192.0.2.7"), name -> false))
+                    .get(10, TimeUnit.SECONDS);
+            assertEquals(Decision.Outcome.DENY, denied.outcome());
+        }
+    }
+
     @Test void bypassesGetACautionWhereNamesAreNotChecked() throws Exception {
         TestSupport.writeConfig(directory, "bypass.permissions", List.of("example.staff"));
         LoginAttempt staff = new LoginAttempt("Alex", null, InetAddress.getByName("192.0.2.1"), "example.staff"::equals);

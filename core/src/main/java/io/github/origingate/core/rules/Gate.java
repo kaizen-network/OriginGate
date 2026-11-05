@@ -200,6 +200,18 @@ public final class Gate {
     }
 
     private Decision failed(LoginAttempt attempt, Throwable error) {
+        // The address's own lookup could not complete. An answer a rule acts on, kept for its IPv6 /64, decides
+        // instead of on-lookup-failure, so a flood that fills the queue does not let a rotating VPN user in.
+        Optional<LookupService.Result> fallback;
+        try {
+            fallback = lookups.networkFallback(Addresses.text(attempt.address()));
+        } catch (RuntimeException ex) {
+            fallback = Optional.empty();
+        }
+        if (fallback.isPresent()) {
+            log.debug("Lookup for " + attempt.username() + " failed (" + Text.message(error) + "); using the answer kept for its /64");
+            return afterLookup(attempt, fallback.get());
+        }
         Throwable cause = Text.unwrap(error);
         boolean overBudget = cause instanceof LookupService.BudgetExceededException;
         String reason = cause instanceof TimeoutException

@@ -54,11 +54,14 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final AtomicBoolean current;
     /** "sqlite", "mysql", or "memory-only" when SQLite cannot run on this system. */
     private final String storageName;
+    /** Why storage is memory-only, or null. */
+    private final String storageProblem;
     private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
-                              Clock clock, LookupStats stats, AtomicBoolean current, String storageName) {
+                              Clock clock, LookupStats stats, AtomicBoolean current, String storageName,
+                              String storageProblem) {
         this.config = config;
         this.messages = messages;
         this.storage = storage;
@@ -71,6 +74,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.stats = stats;
         this.current = current;
         this.storageName = storageName;
+        this.storageProblem = storageProblem;
     }
 
     /** Copies the default config.yml and messages.yml when they do not exist yet. */
@@ -106,6 +110,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         OriginGateConfig.Storage settings = config.storage();
         IpStorage storage;
         String storageName = settings.type();
+        String storageProblem = null;
         if (settings.type().equals("mysql")) {
             SqlIpStorage mysql = SqlIpStorage.mysql(settings.mysql());
             if (!mysql.ready()) {
@@ -116,12 +121,18 @@ public final class OriginGateRuntime implements AutoCloseable {
         } else {
             try {
                 storage = SqlIpStorage.sqlite(settings.sqliteFile());
-            } catch (SqliteUnavailableException ex) {
+            } catch (SQLException ex) {
                 // Stopping here would leave every login unchecked, so checks go on without saved lookups.
-                log.error(ex.getMessage() + " Until then, OriginGate keeps checking connections, but lookups are kept in "
-                        + "memory only and asked again after a restart.", null);
+                boolean unavailable = ex instanceof SqliteUnavailableException;
+                log.error((unavailable ? ex.getMessage()
+                        : "Could not open the SQLite file " + settings.sqliteFile() + ": " + Text.message(ex)
+                                + ". Check that the file is not damaged or in use and that the folder can be written, "
+                                + "then run origingate reload.")
+                        + " Until then, OriginGate keeps checking connections, but lookups are kept in memory only and "
+                        + "asked again after a restart.", null);
                 storage = IpStorage.NONE;
                 storageName = "memory-only";
+                storageProblem = unavailable ? "SQLite cannot run on this system" : "the SQLite file could not be opened";
             }
         }
         HttpTransport http = HttpTransport.newBuilder()
@@ -144,7 +155,7 @@ public final class OriginGateRuntime implements AutoCloseable {
                 info -> Gate.match(config.rules(), info).isPresent());
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log, namesUnverified),
-                decisionFile, clock, stats, current, storageName);
+                decisionFile, clock, stats, current, storageName, storageProblem);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -229,7 +240,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         lines.add("Budget: " + (lookups.budgetPerMinute() == 0 ? "no limit (max-lookups-per-minute: 0)"
                 : lookups.budgetUsed() + " of " + lookups.budgetPerMinute() + " lookups in the last minute"));
         lines.add("Memory cache: " + lookups.cache().size() + " entries. Storage: " + storageName
-                + (storageName.equals("memory-only") ? " (SQLite cannot run on this system)" : ""));
+                + (storageProblem == null ? "" : " (" + storageProblem + ")"));
         lines.add("Providers (" + providers.chain().describe() + "):");
         for (String line : providers.chain().status()) lines.add("  " + line);
         lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)

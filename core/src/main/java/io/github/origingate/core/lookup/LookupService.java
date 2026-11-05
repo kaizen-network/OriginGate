@@ -121,9 +121,6 @@ public final class LookupService {
     private final LookupStats stats;
     private final Alerts alerts;
     private final Predicate<IpInfo> sharedAcrossNetwork;
-    private final AtomicLong skippedByBudget = new AtomicLong();
-    /** When a login was last over the budget, or null. */
-    private volatile Instant lastOverBudget;
     /** Lookups handed to the executor that no worker has picked up yet. */
     private final AtomicInteger queued = new AtomicInteger();
     /** A stale lookup is dropped only with at least this many others still queued behind it: the worker count. */
@@ -213,6 +210,14 @@ public final class LookupService {
         return network == null ? Optional.empty() : cache.get(network);
     }
 
+    /**
+     * For a login whose own lookup could not complete (queue full, timeout, budget, dropped, provider failure): an
+     * answer a rule acts on, kept for its IPv6 /64, used in place of on-lookup-failure. Empty when there is none.
+     */
+    public Optional<Result> networkFallback(String ip) {
+        return sharedAnswer(ip).map(info -> new Result(info.withIp(ip), Source.MEMORY));
+    }
+
     private void start(Flight flight, String flightKey, String ip, boolean refresh) {
         queued.incrementAndGet();
         try {
@@ -261,10 +266,17 @@ public final class LookupService {
             Optional<IpInfo> cached = cache.get(ip);
             if (cached.isPresent()) return new Result(cached.get(), Source.MEMORY);
             Optional<IpInfo> stored = read(ip, now.minus(maxAge));
-            if (stored.isPresent()) return remember(stored.get(), Source.STORAGE, null);
-            // Only after this address's own memory and storage: a neighbour's answer that a rule acts on.
-            Optional<IpInfo> shared = sharedAnswer(ip);
-            if (shared.isPresent()) return new Result(shared.get().withIp(ip), Source.MEMORY);
+            if (stored == null) {
+                // Storage could not be read, so this address may have its own row: ask the providers. If that lookup
+                // fails, the login falls back to the /64 answer (networkFallback).
+                log.debug("Storage is not readable, so the /64 answer for " + ip + " is not used before asking the providers");
+            } else if (stored.isPresent()) {
+                return remember(stored.get(), Source.STORAGE, null);
+            } else {
+                // Only after this address's own memory and storage: a neighbour's answer that a rule acts on.
+                Optional<IpInfo> shared = sharedAnswer(ip);
+                if (shared.isPresent()) return new Result(shared.get().withIp(ip), Source.MEMORY);
+            }
             Instant retryAt;
             synchronized (noCountry) {
                 retryAt = noCountry.get(ip);
@@ -294,30 +306,30 @@ public final class LookupService {
     /** A refresh from a command is not limited; logins over the budget fail and follow on-budget-exceeded. */
     private void takeBudget(Instant now) throws SkippedException {
         if (budget.take(now)) {
-            Instant last = lastOverBudget;
+            // Kept in LookupStats, so a reload during a flood does not look like a quiet minute.
+            Instant last = stats.lastOverBudget();
             if (last == null || !now.isBefore(last.plus(BUDGET_QUIET))) {
                 // Alerts.Once sends this only after a problem was sent, once per flood.
                 alerts.recovered("budget", "The lookup budget has had room for a minute again. "
-                        + skippedByBudget.getAndSet(0) + " new addresses were not checked while it was used up.");
+                        + stats.takeSkippedByBudget() + " new addresses were not checked while it was used up.");
             }
             return;
         }
-        lastOverBudget = now;
-        stats.countOverBudget();
-        skippedByBudget.incrementAndGet();
+        stats.countOverBudget(now);
         alerts.problem("budget", "The lookup budget of " + budget.perMinute() + (budget.perMinute() == 1 ? " lookup" : " lookups")
                 + " per minute is used up. New addresses are not looked up and follow on-budget-exceeded (or "
                 + "on-lookup-failure when it is not set) until it has room again.");
         throw new BudgetExceededException("the lookup budget of " + budget.perMinute() + " per minute is used up");
     }
 
+    /** This address's row, empty when it has none, or null when storage could not be read (paused or failing). */
     private Optional<IpInfo> read(String ip, Instant notBefore) {
-        if (storagePaused()) return Optional.empty();
+        if (storagePaused()) return null;
         try {
             return storage.find(ip, notBefore);
         } catch (SQLException | RuntimeException ex) {
             pauseStorage("read", ip, ex);
-            return Optional.empty();
+            return null;
         }
     }
 

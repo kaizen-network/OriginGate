@@ -190,6 +190,52 @@ class GateTest {
         assertEquals(calls + 1, provider.calls.get(), "the neighbour was kicked from memory without a lookup");
     }
 
+    @Test void slash64AnswerDecidesWhenTheOwnLookupCannotComplete() throws Exception {
+        String flagged = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:7:8::1"));
+        String rotated = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:7:8::99"));
+        provider.answer(new IpInfo(flagged, "Example VPN", "Example VPN Ltd", null, null, null, "Canada", "CA", "AS64496",
+                true, false, null, TestSupport.NOW));
+        Gate gate = gateWithBudget();
+        assertEquals(Rule.VPN, run(gate, player("Alex", flagged)).rule());
+        // The Bukkit path when every slot is in use, and any other failure: the /64 answer replaces on-lookup-failure.
+        Decision busy = gate.finish(player("Steve", rotated), null, new IllegalStateException("too many connections were being checked"));
+        assertEquals(Rule.VPN, busy.rule());
+        assertEquals(Outcome.DENY, busy.outcome());
+        Decision timedOut = gate.finish(player("Steve", rotated), null, new java.util.concurrent.TimeoutException());
+        assertEquals(Outcome.DENY, timedOut.outcome());
+        assertEquals(Outcome.BYPASS, gate.finish(player("Kai", rotated, "origingate.bypass.vpn"), null, new IllegalStateException("busy")).outcome());
+        Decision unrelated = gate.finish(player("Steve", HOME_IP), null, new IllegalStateException("busy"));
+        assertEquals(Rule.LOOKUP_FAILURE, unrelated.rule(), "without a /64 answer, on-lookup-failure decides as before");
+        assertEquals(Outcome.ALLOW, unrelated.outcome());
+    }
+
+    @Test void slash64AnswerDecidesWhenTheQueueIsFull() throws Exception {
+        String flagged = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:9:a::1"));
+        String rotated = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:9:a::2"));
+        provider.answer(new IpInfo(flagged, "Example VPN", "Example VPN Ltd", null, null, null, "Canada", "CA", "AS64496",
+                true, false, null, TestSupport.NOW));
+        OriginGateConfig config = TestSupport.config(directory);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        java.util.concurrent.ThreadPoolExecutor tiny = new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                new java.util.concurrent.SynchronousQueue<>());
+        try {
+            LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(),
+                    new MemoryCache(100, Duration.ofDays(30), clock), Duration.ofDays(30), tiny, clock, Log.NONE, 0,
+                    new io.github.origingate.core.lookup.LookupStats(clock, java.time.ZoneOffset.UTC),
+                    io.github.origingate.core.Alerts.NONE, info -> Gate.match(config.rules(), info).isPresent());
+            Gate gate = new Gate(config, lookups, Log.NONE);
+            assertEquals(Rule.VPN, run(gate, player("Alex", flagged)).rule());
+            provider.gate = new CountDownLatch(1);
+            lookups.lookup("192.0.2.200", false);
+            Decision full = run(gate, player("Steve", rotated));
+            assertEquals(Rule.VPN, full.rule(), "the queue was full, so the /64 answer decided: " + full);
+            assertEquals(Outcome.DENY, full.outcome());
+        } finally {
+            if (provider.gate != null) provider.gate.countDown();
+            tiny.shutdownNow();
+        }
+    }
+
     private static final String HOSTING_IP = "198.51.100.40";
 
     private FakeProvider withHosting() {
