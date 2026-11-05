@@ -71,7 +71,12 @@ public final class SqlIpStorage implements IpStorage {
         }
         String url = "jdbc:sqlite:" + absolute;
         return open(() -> {
-            Connection connection = BundledSqlite.driver().connect(url, new Properties());
+            Connection connection;
+            try {
+                connection = BundledSqlite.driver().connect(url, new Properties());
+            } catch (SQLException ex) {
+                throw BundledSqlite.explain(ex);
+            }
             try (Statement statement = connection.createStatement()) {
                 statement.execute("PRAGMA busy_timeout=5000");
             } catch (SQLException ex) {

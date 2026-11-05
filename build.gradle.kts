@@ -44,6 +44,16 @@ subprojects {
         isPreserveFileTimestamps = false
         isReproducibleFileOrder = true
     }
+    // sqlite-jdbc ships a native library for 20 systems, about 0.6 MB each. Only these are kept, so every plugin JAR
+    // stays under Hangar's 10 MB upload limit. BundledSqlite.SUPPORTED and docs/compatibility.md list the same.
+    val sqliteNatives = listOf("Linux/x86_64", "Linux/aarch64", "Linux-Musl/x86_64", "Linux-Musl/aarch64",
+        "Windows/x86_64", "Windows/aarch64", "Mac/x86_64", "Mac/aarch64")
+    tasks.matching { it.name == "shadowJar" }.configureEach {
+        (this as Jar).exclude { file ->
+            val path = file.relativePath.pathString
+            path.startsWith("org/sqlite/native/") && !file.isDirectory && sqliteNatives.none { path.startsWith("org/sqlite/native/$it/") }
+        }
+    }
     dependencies {
         "testImplementation"(platform("org.junit:junit-bom:5.13.4"))
         "testImplementation"("org.junit.jupiter:junit-jupiter")
