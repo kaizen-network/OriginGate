@@ -288,8 +288,9 @@ public final class LookupService {
         stats.countOverBudget();
         skippedByBudget.incrementAndGet();
         if (budgetUsedUp.compareAndSet(false, true)) {
-            alerts.problem("The lookup budget of " + budget.perMinute() + " lookups per minute is used up. New addresses "
-                    + "follow on-lookup-failure until it has room again.");
+            alerts.problem("The lookup budget of " + budget.perMinute() + (budget.perMinute() == 1 ? " lookup" : " lookups")
+                    + " per minute is used up. New addresses are not looked up and follow on-budget-exceeded (or "
+                    + "on-lookup-failure when it is not set) until it has room again.");
         }
         throw new BudgetExceededException("the lookup budget of " + budget.perMinute() + " per minute is used up");
     }
