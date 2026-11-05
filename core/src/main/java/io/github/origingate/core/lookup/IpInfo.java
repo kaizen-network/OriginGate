@@ -84,6 +84,21 @@ public final class IpInfo {
 
 
 
+    /** The network type that marks hosting and datacenter networks: proxycheck.io's own, and set for ip-api's hosting flag. */
+    public static final String HOSTING = "Hosting";
+
+    /** True when the VPN answer says the network is a hosting or datacenter network. */
+    public boolean hosting() {
+        return HOSTING.equalsIgnoreCase(type);
+    }
+
+    /** The same data for another address, for an IPv6 address answered from its /64 network. */
+    public IpInfo withIp(String other) {
+        if (ip.equals(other)) return this;
+        return new IpInfo(other, provider, organisation, operatorName, city, region, country, countryCode, asn, vpn, proxy,
+                type, checkedAt);
+    }
+
     /** The VPN operator name when it looks meaningful, otherwise the network organisation. */
     public String displayOrganisation() {
         return operatorName != null && operatorName.length() > 3 ? operatorName : organisation;

@@ -105,6 +105,7 @@ class ProxyCheckProviderTest {
         assertEquals("Cloudflare, Inc.", info.provider());
         assertEquals("AU", info.countryCode());
         assertEquals("Hosting", info.type());
+        assertTrue(info.hosting(), "proxycheck.io's network type feeds the hosting rule");
         assertFalse(info.vpn());
     }
 
@@ -175,6 +176,37 @@ class ProxyCheckProviderTest {
         ProxyCheckProvider provider = provider(List.of("key-one", "key-two", "key-three"), 3000);
         assertEquals("Google LLC", provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE).provider());
         assertEquals(List.of("/v3/8.8.8.8?key=key-one", "/v3/8.8.8.8?key=key-two", "/v3/8.8.8.8?key=key-three"), requests);
+    }
+
+    @Test void refusedKeyIsReportedOnceAndAgainWhenAccepted() throws Exception {
+        keyStatus.put("key-one", 429);
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
+        provider = new ProxyCheckProvider(HttpTransport.newHttpClient(),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v3/"), List.of("key-one", "key-two"),
+                Duration.ofMillis(3000), clock, Log.NONE, "OriginGate/test");
+        TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
+        provider.alertTo(alerts);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        assertEquals(1, alerts.problems.size(), alerts.problems.toString());
+        assertTrue(alerts.problems.get(0).contains("refused API key 1"), alerts.problems.get(0));
+        assertEquals(List.of("API key 1: refused, tried again in 60 s"), provider.keyStatus(clock.instant()));
+
+        keyStatus.remove("key-one");
+        clock.advance(Duration.ofSeconds(61));
+        provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE);
+        assertEquals(List.of("proxycheck.io accepts API key 1 again."), alerts.recoveries);
+        assertEquals(List.of(), provider.keyStatus(clock.instant()));
+    }
+
+    @Test void lastRefusedKeyIsLeftToTheProviderAlert() throws Exception {
+        keyStatus.put("key-one", 429);
+        ProxyCheckProvider provider = provider(List.of("key-one"), 3000);
+        TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
+        provider.alertTo(alerts);
+        assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
+        assertTrue(alerts.problems.isEmpty(), "the chain reports the paused provider instead");
     }
 
     @Test void allKeysRefusedIsAKeyRejection() throws Exception {

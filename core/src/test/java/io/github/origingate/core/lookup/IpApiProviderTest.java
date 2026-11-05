@@ -52,6 +52,19 @@ class IpApiProviderTest {
         assertFalse(info.proxy());
     }
 
+    @Test void hostingFlagBecomesTheHostingType() throws Exception {
+        assertTrue(IpApiProvider.FIELDS.endsWith(",hosting"), IpApiProvider.FIELDS);
+        String body = "{\"status\":\"success\",\"country\":\"Canada\",\"countryCode\":\"CA\",\"isp\":\"Example Cloud\","
+                + "\"org\":\"Example Cloud Ltd\",\"as\":\"AS64496 Example Cloud\",\"proxy\":false,\"hosting\":%s}";
+        IpInfo hosting = IpApiProvider.parse("198.51.100.40", String.format(body, "true"), TestSupport.NOW);
+        assertEquals(IpInfo.HOSTING, hosting.type());
+        assertTrue(hosting.hosting());
+        assertFalse(hosting.vpn());
+        IpInfo home = IpApiProvider.parse("198.51.100.40", String.format(body, "false"), TestSupport.NOW);
+        assertFalse(home.hosting());
+        assertEquals(null, home.type());
+    }
+
     @Test void failStatusIsAFailure() {
         LookupException failure = assertThrows(LookupException.class,
                 () -> IpApiProvider.parse("10.0.0.1", read("private-range.json"), TestSupport.NOW));

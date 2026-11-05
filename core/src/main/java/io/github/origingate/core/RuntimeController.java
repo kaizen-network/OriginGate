@@ -8,11 +8,23 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
+import io.github.origingate.core.lookup.LookupStats;
 
 /** Runtime lifecycle shared by server adapters. Reload is called on a worker thread. */
 public final class RuntimeController implements AutoCloseable {
+    /** Delivers a lookup alert to online staff. {@code template} is the MiniMessage text with a {@code <message>} placeholder. */
+    public interface StaffAlerts {
+        void send(OriginGateRuntime active, String template, String message);
+
+        StaffAlerts NONE = (active, template, message) -> { };
+    }
+
     private final Path directory;
     private final Log log;
+    private final Supplier<OfflineModeWarning.Mode> mode;
+    private final LookupStats stats = new LookupStats();
+    private final Alerts alerts;
     private final AtomicInteger droppedReports = new AtomicInteger();
     private final ThreadPoolExecutor reports = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(256), task -> {
@@ -25,8 +37,26 @@ public final class RuntimeController implements AutoCloseable {
     private final List<OriginGateRuntime> retired = new ArrayList<>();
     private volatile boolean closed;
     public RuntimeController(Path directory, Log log) {
+        this(directory, log, () -> OfflineModeWarning.Mode.ONLINE, StaffAlerts.NONE);
+    }
+
+    /** {@code mode} tells how the platform checks player names, for the offline-mode warning. */
+    public RuntimeController(Path directory, Log log, Supplier<OfflineModeWarning.Mode> mode, StaffAlerts staff) {
         this.directory = directory;
         this.log = log;
+        this.mode = mode;
+        this.alerts = new Alerts() {
+            @Override public void problem(String message) {
+                log.warn("Alert: " + message, null);
+                OriginGateRuntime active = runtime;
+                if (active != null) staff.send(active, active.messages().alertLookupProblem(), message);
+            }
+            @Override public void recovered(String message) {
+                log.info("Alert: " + message);
+                OriginGateRuntime active = runtime;
+                if (active != null) staff.send(active, active.messages().alertLookupRecovered(), message);
+            }
+        };
         reports.allowCoreThreadTimeOut(true);
     }
     public OriginGateRuntime runtime() { return runtime; }
@@ -34,7 +64,7 @@ public final class RuntimeController implements AutoCloseable {
         if (closed) return "OriginGate is stopping.";
         try {
             OriginGateRuntime.installDefaults(directory);
-            OriginGateRuntime next = OriginGateRuntime.load(directory, log);
+            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts);
             if (closed) {
                 next.close();
                 return "OriginGate is stopping.";
@@ -66,6 +96,13 @@ public final class RuntimeController implements AutoCloseable {
         if (config.lookup().uses("proxycheck") && config.lookup().proxycheck().apiKeys().isEmpty()) {
             log.warn("No proxycheck.io API keys are set; proxycheck.io allows 100 lookups per day without a key.", null);
         }
+        OfflineModeWarning.Mode current;
+        try {
+            current = mode.get();
+        } catch (RuntimeException | LinkageError ex) {
+            current = OfflineModeWarning.Mode.UNKNOWN;
+        }
+        OfflineModeWarning.check(current, config).ifPresent(warning -> log.warn(warning, null));
     }
     public void cleanup() {
         OriginGateRuntime active = runtime;

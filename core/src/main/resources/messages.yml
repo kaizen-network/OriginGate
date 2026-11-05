@@ -26,12 +26,31 @@ kick:
 
     <yellow>Username: <username></yellow>
     <gray>Time: <time></gray>
+  deny-networks: |-
+    <red>Connections from your network are not allowed.</red>
+
+    <yellow><provider> / <organisation></yellow>
+
+    <white>Contact the server staff if you think this is a mistake.</white>
+
+    <yellow>Username: <username></yellow>
+    <gray>Time: <time></gray>
   proxy: |-
     <red>Proxy connections are not allowed.</red>
 
     <yellow><provider> / <organisation></yellow>
     <yellow>(<country>, <city>)</yellow>
 
+    <white>Contact the server staff if you think this is a mistake.</white>
+
+    <yellow>Username: <username></yellow>
+    <gray>Time: <time></gray>
+  hosting: |-
+    <red>Connections from hosting or datacenter networks are not allowed.</red>
+
+    <yellow><provider> / <organisation></yellow>
+
+    <white>Join from your home or mobile connection instead.</white>
     <white>Contact the server staff if you think this is a mistake.</white>
 
     <yellow>Username: <username></yellow>
@@ -55,6 +74,10 @@ kick:
 bypass-notice: "<light_purple>You joined with a <rule> check bypass.</light_purple>"
 
 # Sent to online staff with an alert permission (see config.yml). Leave empty to turn off.
+# lookup-problem and lookup-recovered are sent once when a lookup provider stops answering (or the lookup budget is
+# used up) and once when it is over. Their text is in <message>; the other placeholders do not apply to them.
 alerts:
+  lookup-problem: "<dark_gray>[<gold>OriginGate</gold>]</dark_gray> <red><message></red>"
+  lookup-recovered: "<dark_gray>[<gold>OriginGate</gold>]</dark_gray> <green><message></green>"
   denied: "<dark_gray>[<gold>OriginGate</gold>]</dark_gray> <red>Kicked</red> <yellow><username></yellow> <gray>by the <rule> rule: <provider> / <organisation>, <country></gray>"
   bypassed: "<dark_gray>[<gold>OriginGate</gold>]</dark_gray> <green>Let in</green> <yellow><username></yellow> <gray>with a <rule> bypass: <provider> / <organisation>, <country></gray>"

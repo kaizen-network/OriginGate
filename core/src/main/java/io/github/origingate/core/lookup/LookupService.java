@@ -1,13 +1,16 @@
 package io.github.origingate.core.lookup;
 
+import io.github.origingate.core.Alerts;
 import io.github.origingate.core.Log;
 import io.github.origingate.core.Text;
+import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.storage.IpStorage;
 
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -15,11 +18,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Finds IP data in this order: memory, storage, providers. Only one lookup per IP
- * runs at a time; other callers share its result. Storage errors are logged and skipped, never fatal,
- * and after one, storage is left alone for {@link #STORAGE_PAUSE} so a dead database does not slow logins.
+ * Finds IP data in this order: memory, storage, providers. Only one lookup per key runs at a time; other callers share
+ * its result. The key is the address for IPv4 and its /64 network for IPv6, so one lookup covers a whole /64 in memory;
+ * storage keeps one row per address. A queued lookup whose callers have all stopped waiting is dropped before any
+ * provider is asked. Storage errors are logged and skipped, never fatal, and after one, storage is left alone for
+ * {@link #STORAGE_PAUSE} so a dead database does not slow logins.
  */
 public final class LookupService {
     public static final Duration STORAGE_PAUSE = Duration.ofSeconds(60);
@@ -44,6 +51,11 @@ public final class LookupService {
         public Source source() { return source; }
         public AnsweredBy answeredBy() { return answeredBy; }
 
+        /** This result for {@code ip}, which may be another address in the same IPv6 /64. */
+        Result forIp(String ip) {
+            return info.ip().equals(ip) ? this : new Result(info.withIp(ip), source, answeredBy);
+        }
+
         @Override public boolean equals(Object other) {
             if (this == other) return true;
             if (!(other instanceof Result)) return false;
@@ -58,6 +70,39 @@ public final class LookupService {
         public Result(IpInfo info, Source source) { this(info, source, null); }
     }
 
+    /** A lookup that was skipped on purpose: dropped after its callers stopped waiting, or over the budget. */
+    static final class SkippedException extends LookupException {
+        SkippedException(String message) { super(message); }
+    }
+
+    /** A queued or running lookup, shared by every caller for the same key. */
+    private static final class Flight {
+        final CompletableFuture<Result> future = new CompletableFuture<>();
+        /** The latest time a caller still waits. Guarded by this. */
+        private Instant deadline;
+        /** True once a caller waits without a limit. Guarded by this. */
+        private boolean unlimited;
+        /** True once the flight was dropped; nobody may join it then. Guarded by this. */
+        private boolean dropped;
+
+        Flight(Instant deadline) { join(deadline); }
+
+        /** Adds a caller that waits until {@code until} (null: without limit). False when the flight was dropped. */
+        synchronized boolean join(Instant until) {
+            if (dropped) return false;
+            if (until == null) unlimited = true;
+            else if (deadline == null || until.isAfter(deadline)) deadline = until;
+            return true;
+        }
+
+        /** Marks the flight dropped when every caller has stopped waiting by {@code now}. */
+        synchronized boolean dropIfExpired(Instant now) {
+            if (unlimited || now.isBefore(deadline)) return false;
+            dropped = true;
+            return true;
+        }
+    }
+
     private final ProviderChain providers;
     private final IpStorage storage;
     private final MemoryCache cache;
@@ -65,8 +110,13 @@ public final class LookupService {
     private final Executor executor;
     private final Clock clock;
     private final Log log;
-    private final Map<String, CompletableFuture<Result>> inFlight = new ConcurrentHashMap<>();
-    /** IPs whose last provider answer had no country, with the time they may be asked again. */
+    private final LookupBudget budget;
+    private final LookupStats stats;
+    private final Alerts alerts;
+    private final AtomicBoolean budgetUsedUp = new AtomicBoolean();
+    private final AtomicLong skippedByBudget = new AtomicLong();
+    private final Map<String, Flight> inFlight = new ConcurrentHashMap<>();
+    /** Keys whose last provider answer had no country, with the time they may be asked again. */
     private final Map<String, Instant> noCountry = new LinkedHashMap<String, Instant>(16, 0.75f, false) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Instant> eldest) {
             return size() > MAX_NO_COUNTRY;
@@ -76,6 +126,14 @@ public final class LookupService {
 
     public LookupService(ProviderChain providers, IpStorage storage, MemoryCache cache, Duration maxAge,
                          Executor executor, Clock clock, Log log) {
+        this(providers, storage, cache, maxAge, executor, clock, log, 0, new LookupStats(clock, ZoneId.systemDefault()),
+                Alerts.NONE);
+    }
+
+    /** {@code maxLookupsPerMinute} limits provider lookups; 0 means no limit. */
+    public LookupService(ProviderChain providers, IpStorage storage, MemoryCache cache, Duration maxAge,
+                         Executor executor, Clock clock, Log log, int maxLookupsPerMinute, LookupStats stats,
+                         Alerts alerts) {
         this.providers = providers;
         this.storage = storage;
         this.cache = cache;
@@ -83,61 +141,102 @@ public final class LookupService {
         this.executor = executor;
         this.clock = clock;
         this.log = log;
+        this.budget = new LookupBudget(maxLookupsPerMinute);
+        this.stats = stats;
+        this.alerts = alerts;
+    }
+
+    /** Looks up {@code ip} for a caller that waits without a time limit, such as a command. */
+    public CompletableFuture<Result> lookup(String ip, boolean refresh) {
+        return lookup(ip, refresh, null);
     }
 
     /**
      * Looks up {@code ip}. With {@code refresh}, memory and storage are skipped and the provider is asked.
-     * The returned future completes exceptionally with a {@link LookupException} on failure.
+     * {@code wait} is how long the caller waits for the answer, or null for no limit. The returned future completes
+     * exceptionally with a {@link LookupException} on failure.
      */
-    public CompletableFuture<Result> lookup(String ip, boolean refresh) {
+    public CompletableFuture<Result> lookup(String ip, boolean refresh, Duration wait) {
+        String key = Addresses.lookupKey(ip);
         if (!refresh) {
-            Optional<IpInfo> cached = cache.get(ip);
-            if (cached.isPresent()) return CompletableFuture.completedFuture(new Result(cached.get(), Source.MEMORY));
+            Optional<IpInfo> cached = cache.get(key);
+            if (cached.isPresent()) {
+                stats.answered(Source.MEMORY);
+                return CompletableFuture.completedFuture(new Result(cached.get().withIp(ip), Source.MEMORY));
+            }
         }
+        Instant deadline = wait == null ? null : clock.instant().plus(wait);
         // A refresh never joins a normal lookup, which may answer from storage.
-        String key = refresh ? "refresh " + ip : ip;
-        CompletableFuture<Result> created = new CompletableFuture<>();
-        CompletableFuture<Result> existing = inFlight.putIfAbsent(key, created);
-        if (existing != null) {
-            log.debug("Lookup for " + ip + " is already running, waiting for it");
-            return io.github.origingate.core.util.Futures.copy(existing);
-        }
-        try {
-            executor.execute(() -> {
-                Result result = null;
-                Throwable failure = null;
-                try {
-                    result = load(ip, refresh);
-                } catch (Throwable ex) {
-                    failure = ex;
+        String flightKey = refresh ? "refresh " + key : key;
+        while (true) {
+            Flight existing = inFlight.get(flightKey);
+            if (existing != null) {
+                if (existing.join(deadline)) {
+                    log.debug("Lookup for " + key + " is already running, waiting for it");
+                    return existing.future.thenApply(result -> result.forIp(ip));
                 }
-                // Removed before completing, so a lookup that starts after this one finished never joins it.
-                inFlight.remove(key, created);
-                if (failure == null) created.complete(result);
-                else created.completeExceptionally(failure);
-                // Saved after the waiting login already has its answer. Without a VPN check the flags are not real, so
-                // the result stays in memory only: a later config with VPN checks must not reuse it from storage.
-                if (result != null && result.source() == Source.PROVIDER && providers.checksVpn()) save(result.info());
-            });
-        } catch (RejectedExecutionException ex) {
-            inFlight.remove(key, created);
-            created.completeExceptionally(new LookupException("Too many lookups are waiting", ex));
+                inFlight.remove(flightKey, existing);
+                continue;
+            }
+            Flight created = new Flight(deadline);
+            if (inFlight.putIfAbsent(flightKey, created) != null) continue;
+            start(created, flightKey, key, ip, refresh);
+            // A copy, so a caller's own timeout never cancels the shared lookup.
+            return created.future.thenApply(result -> result.forIp(ip));
         }
-        return io.github.origingate.core.util.Futures.copy(created);
     }
 
-    private Result load(String ip, boolean refresh) throws LookupException {
+    private void start(Flight flight, String flightKey, String key, String ip, boolean refresh) {
+        try {
+            executor.execute(() -> run(flight, flightKey, key, ip, refresh));
+        } catch (RejectedExecutionException ex) {
+            inFlight.remove(flightKey, flight);
+            stats.countFailed();
+            flight.future.completeExceptionally(new LookupException("Too many lookups are waiting", ex));
+        }
+    }
+
+    private void run(Flight flight, String flightKey, String key, String ip, boolean refresh) {
+        Result result = null;
+        Throwable failure = null;
+        if (flight.dropIfExpired(clock.instant())) {
+            stats.countDropped();
+            log.debug("Dropped the lookup for " + ip + ": every login waiting for it stopped waiting before a worker was free");
+            failure = new SkippedException("dropped: no login was waiting for it any more");
+        } else {
+            try {
+                result = load(key, ip, refresh);
+            } catch (Throwable ex) {
+                failure = ex;
+                if (!(ex instanceof SkippedException)) stats.countFailed();
+            }
+        }
+        // Removed before completing, so a lookup that starts after this one finished never joins it.
+        inFlight.remove(flightKey, flight);
+        if (failure == null) {
+            stats.answered(result.source());
+            flight.future.complete(result);
+        } else {
+            flight.future.completeExceptionally(failure);
+        }
+        // Saved after the waiting login already has its answer. Without a VPN check the flags are not real, so
+        // the result stays in memory only: a later config with VPN checks must not reuse it from storage.
+        if (result != null && result.source() == Source.PROVIDER && providers.checksVpn()) save(result.info());
+    }
+
+    private Result load(String key, String ip, boolean refresh) throws LookupException {
         Instant now = clock.instant();
         if (!refresh) {
             Optional<IpInfo> stored = read(ip, now.minus(maxAge));
-            if (stored.isPresent()) return remember(stored.get(), Source.STORAGE, null);
+            if (stored.isPresent()) return remember(key, stored.get(), Source.STORAGE, null);
             Instant retryAt;
             synchronized (noCountry) {
-                retryAt = noCountry.get(ip);
+                retryAt = noCountry.get(key);
             }
             if (retryAt != null && now.isBefore(retryAt)) {
-                throw new LookupException("No provider had a country for " + ip + " a moment ago; not asking again yet");
+                throw new LookupException("No provider had a country for " + key + " a moment ago; not asking again yet");
             }
+            takeBudget(now);
         }
         log.debug("Asking the lookup providers about " + ip);
         ProviderChain.Answer answer;
@@ -146,14 +245,32 @@ public final class LookupService {
         } catch (ProviderChain.NoCountryException ex) {
             // Country rules cannot work without a country code, so this counts as a failed lookup and is not saved.
             synchronized (noCountry) {
-                noCountry.put(ip, now.plus(NO_COUNTRY_PAUSE));
+                noCountry.put(key, now.plus(NO_COUNTRY_PAUSE));
             }
             throw ex;
         }
         synchronized (noCountry) {
-            noCountry.remove(ip);
+            noCountry.remove(key);
         }
-        return remember(answer.info(), Source.PROVIDER, answer.answeredBy());
+        return remember(key, answer.info(), Source.PROVIDER, answer.answeredBy());
+    }
+
+    /** A refresh from a command is not limited; logins over the budget fail and follow on-lookup-failure. */
+    private void takeBudget(Instant now) throws SkippedException {
+        if (budget.take(now)) {
+            if (budgetUsedUp.compareAndSet(true, false)) {
+                alerts.recovered("The lookup budget has room again. " + skippedByBudget.getAndSet(0)
+                        + " new addresses were not checked while it was used up.");
+            }
+            return;
+        }
+        stats.countOverBudget();
+        skippedByBudget.incrementAndGet();
+        if (budgetUsedUp.compareAndSet(false, true)) {
+            alerts.problem("The lookup budget of " + budget.perMinute() + " lookups per minute is used up. New addresses "
+                    + "follow on-lookup-failure until it has room again.");
+        }
+        throw new SkippedException("the lookup budget of " + budget.perMinute() + " per minute is used up");
     }
 
     private Optional<IpInfo> read(String ip, Instant notBefore) {
@@ -185,18 +302,19 @@ public final class LookupService {
                 + STORAGE_PAUSE.getSeconds() + " seconds: " + Text.message(ex), null);
     }
 
-    private Result remember(IpInfo info, Source source, AnsweredBy answeredBy) {
-        cache.put(info);
+    private Result remember(String key, IpInfo info, Source source, AnsweredBy answeredBy) {
+        cache.put(key, info);
         log.debug("Found " + info.ip() + " in " + source.name().toLowerCase(java.util.Locale.ROOT));
         return new Result(info, source, answeredBy);
     }
 
-    /** Forgets one IP in memory. Returns true when it was cached. */
+    /** Forgets one IP in memory (for IPv6, its whole /64). Returns true when it was cached. */
     public boolean forget(String ip) {
+        String key = Addresses.lookupKey(ip);
         synchronized (noCountry) {
-            noCountry.remove(ip);
+            noCountry.remove(key);
         }
-        return cache.remove(ip);
+        return cache.remove(key);
     }
 
     /** Forgets every IP in memory. Returns how many were cached. */
@@ -209,5 +327,19 @@ public final class LookupService {
 
     public MemoryCache cache() {
         return cache;
+    }
+
+    /** The limit per minute, or 0 when there is none. */
+    public int budgetPerMinute() {
+        return budget.perMinute();
+    }
+
+    /** Provider lookups started in the last minute, counted only while a limit is set. */
+    public int budgetUsed() {
+        return budget.used(clock.instant());
+    }
+
+    public ProviderChain providers() {
+        return providers;
     }
 }

@@ -141,4 +141,53 @@ class RuntimeControllerTest {
             assertTrue(lines.stream().anyMatch(line -> line.startsWith("OriginGate could not start and is NOT checking connections")), lines.toString());
         }
     }
+    private static Log recording(List<String> lines) {
+        return new Log() {
+            @Override public void info(String message) { lines.add(message); }
+            @Override public void warn(String message, Throwable cause) { lines.add(message); }
+            @Override public void debug(String message) { }
+        };
+    }
+
+    @Test void offlineModeWarningFollowsThePlatformModeOnStartAndReload() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        OfflineModeWarning.Mode[] mode = {OfflineModeWarning.Mode.OFFLINE};
+        try (RuntimeController controller = new RuntimeController(directory, recording(lines), () -> mode[0],
+                RuntimeController.StaffAlerts.NONE)) {
+            controller.reload();
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("This server or proxy runs in offline mode")), lines.toString());
+            lines.clear();
+            mode[0] = OfflineModeWarning.Mode.MODERN_FORWARDING;
+            controller.reload();
+            assertTrue(lines.stream().noneMatch(line -> line.contains("offline mode")), lines.toString());
+            mode[0] = OfflineModeWarning.Mode.LEGACY_FORWARDING;
+            controller.reload();
+            assertTrue(lines.stream().anyMatch(line -> line.contains("BungeeCord IP forwarding")), lines.toString());
+        }
+    }
+
+    @Test void pausedProviderAlertsStaffOnce() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        List<String> sent = new CopyOnWriteArrayList<>();
+        try (TestServer server = new TestServer(request -> TestServer.Reply.text(429, "{\"status\":\"denied\",\"message\":\"test limit\"}"))) {
+            TestSupport.writeConfig(directory, "lookup.proxycheck.base-url", server.uri("/v3/").toString(),
+                    "lookup.skip-private-addresses", false);
+            try (RuntimeController controller = new RuntimeController(directory, recording(lines),
+                    () -> OfflineModeWarning.Mode.ONLINE, (active, template, message) -> sent.add(template + " | " + message))) {
+                controller.reload();
+                OriginGateRuntime active = controller.runtime();
+                for (String ip : List.of("192.0.2.1", "192.0.2.2", "192.0.2.3")) {
+                    Decision decision = active.gate().check(new LoginAttempt("Alex", null, InetAddress.getByName(ip), name -> false))
+                            .get(10, TimeUnit.SECONDS);
+                    assertEquals(Rule.LOOKUP_FAILURE, decision.rule());
+                    assertEquals(Decision.Outcome.ALLOW, decision.outcome(), "the default on-lookup-failure still lets players in");
+                }
+                assertEquals(1, sent.size(), sent.toString());
+                assertTrue(sent.get(0).startsWith(active.messages().alertLookupProblem() + " | proxycheck refused the request"), sent.get(0));
+                assertEquals(1, server.requests.size(), "the paused provider is not asked again");
+                assertTrue(lines.stream().anyMatch(line -> line.startsWith("Alert: proxycheck refused the request")), lines.toString());
+                assertTrue(active.status().stream().anyMatch(line -> line.contains("proxycheck: paused for")), active.status().toString());
+            }
+        }
+    }
 }

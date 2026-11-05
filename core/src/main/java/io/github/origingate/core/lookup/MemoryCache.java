@@ -33,7 +33,12 @@ public final class MemoryCache {
     }
 
     public synchronized void put(IpInfo info) {
-        entries.put(info.ip(), info);
+        put(info.ip(), info);
+    }
+
+    /** Stores {@code info} under {@code key}, which is the address or, for IPv6, its /64 network. */
+    public synchronized void put(String key, IpInfo info) {
+        entries.put(key, info);
     }
 
     public synchronized boolean remove(String ip) {

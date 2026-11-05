@@ -31,6 +31,12 @@ public final class Providers implements AutoCloseable {
     }
 
     public static Providers start(OriginGateConfig.Lookup settings, HttpTransport http, Clock clock, Log log, String userAgent) {
+        return start(settings, http, clock, log, userAgent, io.github.origingate.core.Alerts.NONE,
+                new LookupStats(clock, java.time.ZoneId.systemDefault()));
+    }
+
+    public static Providers start(OriginGateConfig.Lookup settings, HttpTransport http, Clock clock, Log log, String userAgent,
+                                  io.github.origingate.core.Alerts alerts, LookupStats stats) {
         Map<String, LookupProvider> built = new LinkedHashMap<>();
         for (String name : settings.inUse()) built.put(name, build(name, settings, http, clock, log, userAgent));
 
@@ -57,7 +63,7 @@ public final class Providers implements AutoCloseable {
                     + "allow commercial use.", null);
         }
         ProviderChain chain = new ProviderChain(pick(built, settings.countryFrom()), pick(built, settings.vpnFrom()),
-                Duration.ofMillis(settings.waitMillis()), clock, log);
+                Duration.ofMillis(settings.waitMillis()), clock, log, alerts, stats);
         return new Providers(chain, maxmind, updates);
     }
 

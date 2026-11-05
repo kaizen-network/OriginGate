@@ -93,8 +93,10 @@ public final class OriginGateConfig {
         private final IpApi ipApi;
         private final IpInfoLite ipinfo;
         private final MaxMind maxmind;
+        private final int maxLookupsPerMinute;
 
-        public Lookup(boolean skipPrivateAddresses, FailureMode onFailure, int waitMillis, List<String> countryFrom, List<String> vpnFrom, ProxyCheck proxycheck, IpHub iphub, IpApi ipApi, IpInfoLite ipinfo, MaxMind maxmind) {
+        /** {@code maxLookupsPerMinute} 0 means no limit. */
+        public Lookup(boolean skipPrivateAddresses, FailureMode onFailure, int waitMillis, List<String> countryFrom, List<String> vpnFrom, ProxyCheck proxycheck, IpHub iphub, IpApi ipApi, IpInfoLite ipinfo, MaxMind maxmind, int maxLookupsPerMinute) {
             this.skipPrivateAddresses = skipPrivateAddresses;
             this.onFailure = onFailure;
             this.waitMillis = waitMillis;
@@ -105,6 +107,7 @@ public final class OriginGateConfig {
             this.ipApi = ipApi;
             this.ipinfo = ipinfo;
             this.maxmind = maxmind;
+            this.maxLookupsPerMinute = maxLookupsPerMinute;
         }
 
         public boolean skipPrivateAddresses() { return skipPrivateAddresses; }
@@ -117,6 +120,7 @@ public final class OriginGateConfig {
         public IpApi ipApi() { return ipApi; }
         public IpInfoLite ipinfo() { return ipinfo; }
         public MaxMind maxmind() { return maxmind; }
+        public int maxLookupsPerMinute() { return maxLookupsPerMinute; }
 
         @Override public boolean equals(Object other) {
             if (this == other) return true;
@@ -131,10 +135,11 @@ public final class OriginGateConfig {
                 && java.util.Objects.equals(iphub, that.iphub)
                 && java.util.Objects.equals(ipApi, that.ipApi)
                 && java.util.Objects.equals(ipinfo, that.ipinfo)
-                && java.util.Objects.equals(maxmind, that.maxmind);
+                && java.util.Objects.equals(maxmind, that.maxmind)
+                && maxLookupsPerMinute == that.maxLookupsPerMinute;
         }
-        @Override public int hashCode() { return java.util.Objects.hash(skipPrivateAddresses, onFailure, waitMillis, countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind); }
-        @Override public String toString() { return "Lookup[" + "skipPrivateAddresses=" + skipPrivateAddresses + ", " + "onFailure=" + onFailure + ", " + "waitMillis=" + waitMillis + ", " + "countryFrom=" + countryFrom + ", " + "vpnFrom=" + vpnFrom + ", " + "proxycheck=" + proxycheck + ", " + "iphub=" + iphub + ", " + "ipApi=" + ipApi + ", " + "ipinfo=" + ipinfo + ", " + "maxmind=" + maxmind + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(skipPrivateAddresses, onFailure, waitMillis, countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind, maxLookupsPerMinute); }
+        @Override public String toString() { return "Lookup[" + "skipPrivateAddresses=" + skipPrivateAddresses + ", " + "onFailure=" + onFailure + ", " + "waitMillis=" + waitMillis + ", " + "countryFrom=" + countryFrom + ", " + "vpnFrom=" + vpnFrom + ", " + "proxycheck=" + proxycheck + ", " + "iphub=" + iphub + ", " + "ipApi=" + ipApi + ", " + "ipinfo=" + ipinfo + ", " + "maxmind=" + maxmind + ", " + "maxLookupsPerMinute=" + maxLookupsPerMinute + "]"; }
 
         public static final List<String> PROVIDERS = io.github.origingate.core.util.Compat.list("proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
         /** Providers whose free data has a VPN check. */
@@ -424,33 +429,48 @@ public final class OriginGateConfig {
 
     public static final class Rules {
         private final AddressRule denyAddresses;
+        private final NetworkRule denyNetworks;
         private final BasicRule vpn;
         private final ProxyRule proxy;
+        private final BasicRule hosting;
         private final CountryRule country;
 
-        public Rules(AddressRule denyAddresses, BasicRule vpn, ProxyRule proxy, CountryRule country) {
+        public Rules(AddressRule denyAddresses, NetworkRule denyNetworks, BasicRule vpn, ProxyRule proxy, BasicRule hosting,
+                     CountryRule country) {
             this.denyAddresses = denyAddresses;
+            this.denyNetworks = denyNetworks;
             this.vpn = vpn;
             this.proxy = proxy;
+            this.hosting = hosting;
             this.country = country;
         }
 
         public AddressRule denyAddresses() { return denyAddresses; }
+        public NetworkRule denyNetworks() { return denyNetworks; }
         public BasicRule vpn() { return vpn; }
         public ProxyRule proxy() { return proxy; }
+        public BasicRule hosting() { return hosting; }
         public CountryRule country() { return country; }
+
+        /** Every rule's bypass permissions, in rule order. */
+        public List<List<String>> bypassPermissions() {
+            return io.github.origingate.core.util.Compat.list(denyAddresses.bypassPermissions(), denyNetworks.bypassPermissions(),
+                    vpn.bypassPermissions(), proxy.bypassPermissions(), hosting.bypassPermissions(), country.bypassPermissions());
+        }
 
         @Override public boolean equals(Object other) {
             if (this == other) return true;
             if (!(other instanceof Rules)) return false;
             Rules that = (Rules) other;
             return java.util.Objects.equals(denyAddresses, that.denyAddresses)
+                && java.util.Objects.equals(denyNetworks, that.denyNetworks)
                 && java.util.Objects.equals(vpn, that.vpn)
                 && java.util.Objects.equals(proxy, that.proxy)
+                && java.util.Objects.equals(hosting, that.hosting)
                 && java.util.Objects.equals(country, that.country);
         }
-        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, vpn, proxy, country); }
-        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "country=" + country + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, denyNetworks, vpn, proxy, hosting, country); }
+        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "denyNetworks=" + denyNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
  }
 
     public static final class AddressRule {
@@ -479,6 +499,38 @@ public final class OriginGateConfig {
         @Override public int hashCode() { return java.util.Objects.hash(enabled, list, bypassPermissions); }
         @Override public String toString() { return "AddressRule[" + "enabled=" + enabled + ", " + "list=" + list + ", " + "bypassPermissions=" + bypassPermissions + "]"; }
  }
+
+    /** {@code asns} hold upper-case numbers with the AS prefix; {@code organisations} hold lower-case text to look for. */
+    public static final class NetworkRule {
+        private final boolean enabled;
+        private final List<String> asns;
+        private final List<String> organisations;
+        private final List<String> bypassPermissions;
+
+        public NetworkRule(boolean enabled, List<String> asns, List<String> organisations, List<String> bypassPermissions) {
+            this.enabled = enabled;
+            this.asns = asns;
+            this.organisations = organisations;
+            this.bypassPermissions = bypassPermissions;
+        }
+
+        public boolean enabled() { return enabled; }
+        public List<String> asns() { return asns; }
+        public List<String> organisations() { return organisations; }
+        public List<String> bypassPermissions() { return bypassPermissions; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof NetworkRule)) return false;
+            NetworkRule that = (NetworkRule) other;
+            return enabled == that.enabled
+                && java.util.Objects.equals(asns, that.asns)
+                && java.util.Objects.equals(organisations, that.organisations)
+                && java.util.Objects.equals(bypassPermissions, that.bypassPermissions);
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(enabled, asns, organisations, bypassPermissions); }
+        @Override public String toString() { return "NetworkRule[" + "enabled=" + enabled + ", " + "asns=" + asns + ", " + "organisations=" + organisations + ", " + "bypassPermissions=" + bypassPermissions + "]"; }
+    }
 
     public static final class BasicRule {
         private final boolean enabled;

@@ -38,6 +38,10 @@ public final class IpHubProvider implements LookupProvider {
         return keys.lookup(key -> request(ip, key), deadline);
     }
 
+    @Override public void alertTo(io.github.origingate.core.Alerts alerts) { keys.alertTo(alerts); }
+
+    @Override public List<String> keyStatus(Instant now) { return keys.status(now); }
+
     private IpInfo request(String ip, String key) throws LookupException {
         HttpLookup.Response response = http.get(URI.create(baseUrl + ip), key == null ? io.github.origingate.core.util.Compat.map() : io.github.origingate.core.util.Compat.map("X-Key", key));
         int code = response.status();

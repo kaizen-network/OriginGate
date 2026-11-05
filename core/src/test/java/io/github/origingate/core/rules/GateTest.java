@@ -120,6 +120,46 @@ class GateTest {
         assertEquals(Outcome.DENY, decision.outcome());
     }
 
+    private static final String HOSTING_IP = "198.51.100.40";
+
+    private FakeProvider withHosting() {
+        return provider.answer(new IpInfo(HOSTING_IP, "Example Cloud", "Example Cloud Ltd", null, "Example City", "Example Region",
+                "Canada", "CA", "AS64496", false, false, IpInfo.HOSTING, TestSupport.NOW));
+    }
+
+    @Test void hostingRuleKicksHostingNetworksWhenTurnedOn() throws Exception {
+        withHosting();
+        assertEquals(Outcome.ALLOW, run(gate(), player("Alex", HOSTING_IP)).outcome(), "off by default");
+        Gate gate = gate("rules.hosting.enabled", true);
+        Decision decision = run(gate, player("Alex", HOSTING_IP));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.HOSTING, decision.rule());
+        assertEquals(Outcome.BYPASS, run(gate, player("Steve", HOSTING_IP, "origingate.bypass.hosting")).outcome());
+        assertEquals(Outcome.ALLOW, run(gate, player("Alex", HOME_IP)).outcome(), "residential networks pass");
+        assertTrue(gate.permissionNames().contains("origingate.bypass.hosting"));
+    }
+
+    @Test void denyNetworksMatchesAsnOrOrganisationText() throws Exception {
+        withHosting();
+        Gate byAsn = gate("rules.deny-networks.enabled", true, "rules.deny-networks.asns", List.of("as64496"));
+        Decision decision = run(byAsn, player("Alex", HOSTING_IP));
+        assertEquals(Rule.DENY_NETWORKS, decision.rule());
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertTrue(decision.note().contains("AS64496"), decision.note());
+        assertEquals(Outcome.ALLOW, run(byAsn, player("Alex", HOME_IP)).outcome());
+
+        Gate byName = gate("rules.deny-networks.enabled", true, "rules.deny-networks.organisations", List.of("EXAMPLE CLOUD"));
+        assertEquals(Rule.DENY_NETWORKS, run(byName, player("Alex", HOSTING_IP)).rule());
+        assertEquals(Outcome.BYPASS, run(byName, player("Steve", HOSTING_IP, "origingate.bypass.deny-networks")).outcome());
+    }
+
+    @Test void denyNetworksIsCheckedBeforeTheVpnRule() throws Exception {
+        Gate gate = gate("rules.deny-networks.enabled", true, "rules.deny-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Alex", VPN_IP, "origingate.bypass.vpn"));
+        assertEquals(Rule.DENY_NETWORKS, decision.rule());
+        assertEquals(Outcome.DENY, decision.outcome(), "a VPN bypass does not cover a denied network");
+    }
+
     @Test void disabledRulesAreSkipped() throws Exception {
         Gate gate = gate("rules.vpn.enabled", false, "rules.proxy.enabled", false);
         Decision decision = run(gate, player("Alex", VPN_IP));

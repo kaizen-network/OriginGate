@@ -143,6 +143,28 @@ class RuntimeCommandsTest {
         assertEquals(0, apiCalls.get());
     }
 
+    @Test void statusShowsCountersBudgetAndProviders() throws Exception {
+        load("lookup.max-lookups-per-minute", 30);
+        Replies checker = new Replies(Commands.CHECK);
+        commands().execute(new String[] {"check", "8.8.8.8"}, checker);
+        checker.waitFor("Result");
+        commands().execute(new String[] {"check", "8.8.8.8"}, checker);
+        checker.waitFor("Result");
+        Replies sender = new Replies(Commands.STATUS);
+        commands().execute(new String[] {"status"}, sender);
+        sender.waitFor("OriginGate " + OriginGateRuntime.VERSION + " status:");
+        String lookups = sender.waitFor("Lookups since");
+        assertTrue(lookups.contains("2 answered (memory 1, storage 0, providers 1), cache hit rate 50%"), lookups);
+        sender.waitFor("Not answered: 0 failed, 0 dropped");
+        assertTrue(sender.waitFor("Budget:").contains("1 of 30 lookups in the last minute"));
+        assertTrue(sender.waitFor("proxycheck:").contains("proxycheck: ok, 1 requests today"));
+        sender.waitFor("On lookup failure: allow");
+        assertEquals(List.of("status"), commands().suggest(new String[] {"st"}, sender));
+        Replies nobody = new Replies(Commands.CHECK);
+        commands().execute(new String[] {"status"}, nobody);
+        nobody.waitFor("You do not have permission");
+    }
+
     @Test void permissionsAreChecked() throws Exception {
         load();
         Replies nobody = new Replies();

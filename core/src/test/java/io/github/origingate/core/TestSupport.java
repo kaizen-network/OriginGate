@@ -122,6 +122,16 @@ public final class TestSupport {
         @Override public Instant instant() { return now; }
     }
 
+    /** Keeps lookup alerts so tests can check that each is sent once. */
+    public static final class RecordingAlerts implements Alerts {
+        public final List<String> problems = new CopyOnWriteArrayList<>();
+        public final List<String> recoveries = new CopyOnWriteArrayList<>();
+
+        @Override public void problem(String message) { problems.add(message); }
+
+        @Override public void recovered(String message) { recoveries.add(message); }
+    }
+
     /** Keeps warnings so tests can check them. */
     public static final class RecordingLog implements Log {
         public final List<String> warnings = new CopyOnWriteArrayList<>();

@@ -39,6 +39,10 @@ public final class ProxyCheckProvider implements LookupProvider {
         return keys.lookup(key -> request(ip, key), deadline);
     }
 
+    @Override public void alertTo(io.github.origingate.core.Alerts alerts) { keys.alertTo(alerts); }
+
+    @Override public List<String> keyStatus(Instant now) { return keys.status(now); }
+
     private IpInfo request(String ip, String key) throws LookupException {
         URI uri = URI.create(baseUrl + ip + (key == null ? "" : "?key=" + io.github.origingate.core.util.Compat.encode(key)));
         HttpLookup.Response response = http.get(uri, io.github.origingate.core.util.Compat.map());

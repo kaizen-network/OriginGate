@@ -17,11 +17,14 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-/** {@code /origingate check|reload|cache clear}, independent of the platform. */
+/** {@code /origingate check|status|reload|cache clear}, independent of the platform. */
 public final class Commands {
     public static final String CHECK = "origingate.command.check";
     public static final String RELOAD = "origingate.command.reload";
     public static final String CACHE = "origingate.command.cache";
+    public static final String STATUS = "origingate.command.status";
+    /** Every command permission, for platforms that look them up before running a command elsewhere. */
+    public static final List<String> PERMISSIONS = io.github.origingate.core.util.Compat.list(CHECK, STATUS, RELOAD, CACHE);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z");
 
     public interface Sender {
@@ -51,7 +54,8 @@ public final class Commands {
     }
 
     public static boolean canUse(Sender sender) {
-        return sender.hasPermission(CHECK) || sender.hasPermission(RELOAD) || sender.hasPermission(CACHE);
+        for (String permission : PERMISSIONS) if (sender.hasPermission(permission)) return true;
+        return false;
     }
 
     public void execute(String[] args, Sender sender) {
@@ -64,6 +68,14 @@ public final class Commands {
                     return;
                 }
                 check(args[1], args.length == 3, sender);
+                break;
+            }
+            case "status": {
+                if (!allowed(sender, STATUS)) return;
+                OriginGateRuntime runtime = running(sender);
+                if (runtime == null) return;
+                sender.reply("OriginGate " + OriginGateRuntime.VERSION + " status:");
+                for (String line : runtime.status()) sender.reply("  " + line);
                 break;
             }
             case "reload": {
@@ -88,6 +100,7 @@ public final class Commands {
         List<String> options = new ArrayList<>();
         if (args.length <= 1) {
             if (sender.hasPermission(CHECK)) options.add("check");
+            if (sender.hasPermission(STATUS)) options.add("status");
             if (sender.hasPermission(RELOAD)) options.add("reload");
             if (sender.hasPermission(CACHE)) options.add("cache");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("check") && sender.hasPermission(CHECK)) {
@@ -204,6 +217,7 @@ public final class Commands {
     private static void usage(Sender sender) {
         sender.reply("OriginGate " + OriginGateRuntime.VERSION + " commands:");
         if (sender.hasPermission(CHECK)) sender.reply("  /origingate check <player|ip> [refresh]");
+        if (sender.hasPermission(STATUS)) sender.reply("  /origingate status");
         if (sender.hasPermission(RELOAD)) sender.reply("  /origingate reload");
         if (sender.hasPermission(CACHE)) sender.reply("  /origingate cache clear <ip|all>");
     }

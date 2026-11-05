@@ -12,6 +12,7 @@ import io.github.origingate.core.config.OriginGateConfig.IpInfoLite;
 import io.github.origingate.core.config.OriginGateConfig.Lookup;
 import io.github.origingate.core.config.OriginGateConfig.MaxMind;
 import io.github.origingate.core.config.OriginGateConfig.Mysql;
+import io.github.origingate.core.config.OriginGateConfig.NetworkRule;
 import io.github.origingate.core.config.OriginGateConfig.ProxyCheck;
 import io.github.origingate.core.config.OriginGateConfig.ProxyRule;
 import io.github.origingate.core.config.OriginGateConfig.Rules;
@@ -45,14 +46,22 @@ public final class ConfigLoader {
             if (rules.vpn().enabled()) throw new ConfigException("lookup.vpn-from is empty, so rules.vpn must be disabled");
             if (rules.proxy().enabled()) throw new ConfigException("lookup.vpn-from is empty, so rules.proxy must be disabled");
         }
+        if (rules.hosting().enabled() && !lookup.vpnFrom().contains("proxycheck") && !lookup.vpnFrom().contains("ip-api")) {
+            throw new ConfigException("rules.hosting needs proxycheck or ip-api in lookup.vpn-from; the other providers "
+                    + "do not report hosting networks separately");
+        }
+        if (rules.denyNetworks().enabled() && lookup.inUse().equals(io.github.origingate.core.util.Compat.list("maxmind"))) {
+            throw new ConfigException("rules.deny-networks needs a provider other than maxmind; MaxMind country files have "
+                    + "no ASN or organisation");
+        }
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
                 lookup, storage(root, config.section("storage")), bypass(config.section("bypass")), rules,
                 alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650));
     }
 
     private static Lookup lookup(Path root, YamlSection lookup) throws ConfigException {
-        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "country-from", "vpn-from",
-                "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
+        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "max-lookups-per-minute", "country-from",
+                "vpn-from", "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
         // Configs from before the provider lists used proxycheck for everything.
         List<String> countryFrom = lookup.has("country-from") ? providers(lookup, "country-from") : io.github.origingate.core.util.Compat.list("proxycheck");
         List<String> vpnFrom = lookup.has("vpn-from") ? providers(lookup, "vpn-from") : io.github.origingate.core.util.Compat.list("proxycheck");
@@ -76,7 +85,9 @@ public final class ConfigLoader {
             throw new ConfigException(lookup.key("ipinfo.token") + " must be set to use IPinfo");
         }
         return new Lookup(lookup.bool("skip-private-addresses"), lookup.choice("on-lookup-failure", FailureMode.class),
-                lookup.integer("wait-millis", 1000, 20000), countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind);
+                lookup.integer("wait-millis", 1000, 20000), countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind,
+                // Added in 1.1.0. A config from before has no limit, as before.
+                lookup.has("max-lookups-per-minute") ? lookup.integer("max-lookups-per-minute", 0, 100_000) : 0);
     }
 
     /** A provider block is read when present (so typos are caught) or when a list names the provider. */
@@ -201,7 +212,7 @@ public final class ConfigLoader {
     }
 
     private static Rules rules(YamlSection rules) throws ConfigException {
-        rules.allowOnly("deny-addresses", "vpn", "proxy", "country");
+        rules.allowOnly("deny-addresses", "deny-networks", "vpn", "proxy", "hosting", "country");
         YamlSection deny = rules.section("deny-addresses");
         deny.allowOnly("enabled", "list", "bypass-permissions");
         YamlSection vpn = rules.section("vpn");
@@ -212,10 +223,46 @@ public final class ConfigLoader {
         country.allowOnly("enabled", "mode", "countries", "bypass-permissions");
         return new Rules(
                 new AddressRule(deny.bool("enabled"), ranges(deny, "list"), permissions(deny, "bypass-permissions")),
+                denyNetworks(rules),
                 new BasicRule(vpn.bool("enabled"), permissions(vpn, "bypass-permissions")),
                 new ProxyRule(proxy.bool("enabled"), countries(proxy, "allowed-countries"), permissions(proxy, "bypass-permissions")),
+                hosting(rules),
                 new CountryRule(country.bool("enabled"), country.choice("mode", CountryMode.class),
                         countries(country, "countries"), permissions(country, "bypass-permissions")));
+    }
+
+    /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */
+    private static BasicRule hosting(YamlSection rules) throws ConfigException {
+        if (!rules.has("hosting")) return new BasicRule(false, io.github.origingate.core.util.Compat.list());
+        YamlSection hosting = rules.section("hosting");
+        hosting.allowOnly("enabled", "bypass-permissions");
+        return new BasicRule(hosting.bool("enabled"), permissions(hosting, "bypass-permissions"));
+    }
+
+    /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */
+    private static NetworkRule denyNetworks(YamlSection rules) throws ConfigException {
+        List<String> none = io.github.origingate.core.util.Compat.list();
+        if (!rules.has("deny-networks")) return new NetworkRule(false, none, none, none);
+        YamlSection section = rules.section("deny-networks");
+        section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
+        List<String> asns = new ArrayList<>();
+        for (String value : section.list("asns", MAX_LIST)) {
+            String asn = value.toUpperCase(Locale.ROOT);
+            if (!asn.startsWith("AS")) asn = "AS" + asn;
+            if (!asn.matches("AS[0-9]{1,10}")) {
+                throw new ConfigException(section.key("asns") + " needs AS numbers such as AS64496; not a valid one: " + value);
+            }
+            asns.add(asn);
+        }
+        List<String> organisations = new ArrayList<>();
+        for (String value : section.list("organisations", MAX_LIST)) {
+            if (value.length() < 3) {
+                throw new ConfigException(section.key("organisations") + " entries need at least 3 characters: " + value);
+            }
+            organisations.add(value.toLowerCase(Locale.ROOT));
+        }
+        return new NetworkRule(section.bool("enabled"), io.github.origingate.core.util.Compat.listCopy(asns),
+                io.github.origingate.core.util.Compat.listCopy(organisations), permissions(section, "bypass-permissions"));
     }
 
     private static List<String> alerts(YamlSection alerts) throws ConfigException {

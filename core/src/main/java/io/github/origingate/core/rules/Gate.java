@@ -12,6 +12,7 @@ import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.Decision.Outcome;
 
 import java.net.InetAddress;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Decides whether a connection may join. Order: global bypass, deny-addresses, private-address skip,
- * lookup, then the vpn, proxy, and country rules. The first rule that matches decides.
+ * lookup, then the deny-networks, vpn, proxy, hosting, and country rules. The first rule that matches decides.
  */
 public final class Gate {
     private final OriginGateConfig config;
@@ -37,10 +38,7 @@ public final class Gate {
         this.lookups = lookups;
         this.log = log;
         Set<String> names = new LinkedHashSet<>(config.bypass().permissions());
-        names.addAll(config.rules().denyAddresses().bypassPermissions());
-        names.addAll(config.rules().vpn().bypassPermissions());
-        names.addAll(config.rules().proxy().bypassPermissions());
-        names.addAll(config.rules().country().bypassPermissions());
+        for (List<String> rule : config.rules().bypassPermissions()) names.addAll(rule);
         this.permissionNames = Collections.unmodifiableSet(names);
     }
 
@@ -61,7 +59,7 @@ public final class Gate {
         String ip = Addresses.text(attempt.address());
         CompletableFuture<LookupService.Result> lookup;
         try {
-            lookup = lookups.lookup(ip, false);
+            lookup = lookups.lookup(ip, false, Duration.ofMillis(config.lookup().waitMillis()));
         } catch (RuntimeException ex) {
             return CompletableFuture.completedFuture(failed(attempt, ex));
         }
@@ -116,6 +114,15 @@ public final class Gate {
     public Decision afterLookup(LoginAttempt attempt, LookupService.Result result) {
         IpInfo info = result.info();
         OriginGateConfig.Rules rules = config.rules();
+        OriginGateConfig.NetworkRule networks = rules.denyNetworks();
+        if (networks.enabled()) {
+            Optional<String> listed = listedNetwork(info, networks);
+            log.debug("Is " + info.ip() + " on a denied network? " + listed.orElse("no"));
+            if (listed.isPresent()) {
+                return matched(attempt, Rule.DENY_NETWORKS, networks.bypassPermissions(), result,
+                        "network is on the deny list (" + listed.get() + ")");
+            }
+        }
         log.debug("Is " + info.ip() + " a VPN? " + yesNo(info.vpn()));
         if (rules.vpn().enabled() && info.vpn()) {
             return matched(attempt, Rule.VPN, rules.vpn().bypassPermissions(), result, "flagged as VPN");
@@ -123,6 +130,12 @@ public final class Gate {
         log.debug("Is " + info.ip() + " a proxy? " + yesNo(info.proxy()));
         if (rules.proxy().enabled() && info.proxy() && !Countries.matchesAny(info, rules.proxy().allowedCountries())) {
             return matched(attempt, Rule.PROXY, rules.proxy().bypassPermissions(), result, "flagged as proxy");
+        }
+        if (rules.hosting().enabled()) {
+            log.debug("Is " + info.ip() + " on a hosting network? " + yesNo(info.hosting()));
+            if (info.hosting()) {
+                return matched(attempt, Rule.HOSTING, rules.hosting().bypassPermissions(), result, "hosting or datacenter network");
+            }
         }
         OriginGateConfig.CountryRule country = rules.country();
         if (country.enabled()) {
@@ -154,6 +167,21 @@ public final class Gate {
         boolean deny = config.lookup().onFailure() == FailureMode.DENY;
         log.debug("Lookup for " + attempt.username() + " failed (" + reason + "), on-lookup-failure is " + (deny ? "deny" : "allow"));
         return new Decision(deny ? Outcome.DENY : Outcome.ALLOW, Rule.LOOKUP_FAILURE, reason, null, config.dryRun());
+    }
+
+    /** The listed ASN or organisation text that matches, compared with the ASN, provider, organisation, and operator. */
+    static Optional<String> listedNetwork(IpInfo info, OriginGateConfig.NetworkRule rule) {
+        if (info.asn() != null) {
+            String asn = info.asn().toUpperCase(Locale.ROOT);
+            if (!asn.startsWith("AS")) asn = "AS" + asn;
+            if (rule.asns().contains(asn)) return Optional.of(asn);
+        }
+        for (String name : new String[] {info.provider(), info.organisation(), info.operatorName()}) {
+            if (name == null) continue;
+            String lower = name.toLowerCase(Locale.ROOT);
+            for (String listed : rule.organisations()) if (lower.contains(listed)) return Optional.of(listed);
+        }
+        return Optional.empty();
     }
 
     private static boolean contains(List<AddressRange> ranges, InetAddress address) {

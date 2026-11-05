@@ -1,5 +1,6 @@
 package io.github.origingate.core.lookup;
 
+import io.github.origingate.core.Alerts;
 import io.github.origingate.core.Log;
 import io.github.origingate.core.Text;
 import io.github.origingate.core.rules.Countries;
@@ -75,21 +76,93 @@ public final class ProviderChain {
         @Override public String toString() { return "Named[" + "name=" + name + ", " + "info=" + info + "]"; }
  }
 
+    /** Failed lookups in a row (timeouts, server errors) after which staff are alerted once. */
+    public static final int FAILURES_BEFORE_ALERT = 3;
+
+    /** How one provider is doing, for alerts and {@code origingate status}. */
+    private static final class Health {
+        /** Guarded by this. */
+        private Instant pausedUntil;
+        private int failuresInRow;
+        private String lastProblem;
+        /** True after a problem alert, until the provider answers again. */
+        private boolean alerted;
+
+        /** Returns true when this pause should be reported (the first problem since the last answer). */
+        synchronized boolean pause(Instant until, String problem) {
+            pausedUntil = until;
+            lastProblem = problem;
+            return report();
+        }
+
+        synchronized boolean failure(String problem) {
+            failuresInRow++;
+            lastProblem = problem;
+            return failuresInRow >= FAILURES_BEFORE_ALERT && report();
+        }
+
+        private boolean report() {
+            if (alerted) return false;
+            alerted = true;
+            return true;
+        }
+
+        /** Returns true when a problem had been reported, so the recovery should be too. */
+        synchronized boolean answered() {
+            failuresInRow = 0;
+            pausedUntil = null;
+            boolean recovered = alerted;
+            alerted = false;
+            return recovered;
+        }
+
+        synchronized Instant pausedUntil() { return pausedUntil; }
+
+        synchronized String describe(Instant now) {
+            if (pausedUntil != null && now.isBefore(pausedUntil)) {
+                return "paused for " + seconds(now, pausedUntil) + " s after: " + lastProblem;
+            }
+            if (failuresInRow > 0) return "failing (" + failuresInRow + " in a row, last: " + lastProblem + ")";
+            if (alerted) return "waiting for an answer after: " + lastProblem;
+            return "ok";
+        }
+    }
+
     private final List<LookupProvider> countryFrom;
     private final List<LookupProvider> vpnFrom;
     private final Duration budget;
     private final Clock clock;
     private final Log log;
-    private final Map<String, Instant> pausedUntil = new ConcurrentHashMap<>();
+    private final Alerts alerts;
+    private final LookupStats stats;
+    private final Map<String, Health> health = new ConcurrentHashMap<>();
 
     /** {@code budget} is the longest time one lookup may spend; no new provider is asked after it. */
     public ProviderChain(List<LookupProvider> countryFrom, List<LookupProvider> vpnFrom, Duration budget, Clock clock, Log log) {
+        this(countryFrom, vpnFrom, budget, clock, log, Alerts.NONE, new LookupStats(clock, java.time.ZoneId.systemDefault()));
+    }
+
+    public ProviderChain(List<LookupProvider> countryFrom, List<LookupProvider> vpnFrom, Duration budget, Clock clock, Log log,
+                         Alerts alerts, LookupStats stats) {
         if (countryFrom.isEmpty()) throw new IllegalArgumentException("countryFrom needs at least one provider");
         this.countryFrom = io.github.origingate.core.util.Compat.listCopy(countryFrom);
         this.vpnFrom = io.github.origingate.core.util.Compat.listCopy(vpnFrom);
         this.budget = budget;
         this.clock = clock;
         this.log = log;
+        this.alerts = alerts;
+        this.stats = stats;
+        for (LookupProvider provider : all()) {
+            health.put(provider.name(), new Health());
+            provider.alertTo(alerts);
+        }
+    }
+
+    /** Every provider, each once, country providers first. */
+    private List<LookupProvider> all() {
+        List<LookupProvider> result = new ArrayList<>(countryFrom);
+        for (LookupProvider provider : vpnFrom) if (!result.contains(provider)) result.add(provider);
+        return result;
     }
 
     public Answer lookup(String ip) throws LookupException {
@@ -124,7 +197,8 @@ public final class ProviderChain {
             IpInfo info = answers.get(name);
             if (info == null) {
                 Instant now = clock.instant();
-                Instant paused = pausedUntil.get(name);
+                Health state = health.get(name);
+                Instant paused = state.pausedUntil();
                 if (paused != null && now.isBefore(paused)) {
                     problems.add(name + " is skipped for now after a refused key or rate limit");
                     continue;
@@ -134,20 +208,31 @@ public final class ProviderChain {
                     return null;
                 }
                 log.debug("Asking " + name + " about " + ip);
+                stats.requested(name);
                 try {
                     info = provider.lookup(ip, deadline);
                 } catch (KeyRejectedException ex) {
-                    pausedUntil.put(name, clock.instant().plus(REFUSED_PAUSE));
                     log.warn(name + " refused the request (" + ex.getMessage() + "), skipping it for "
                             + REFUSED_PAUSE.getSeconds() + " seconds", null);
+                    if (state.pause(clock.instant().plus(REFUSED_PAUSE), ex.getMessage())) {
+                        alerts.problem(name + " refused the request (" + ex.getMessage() + ") and is skipped for "
+                                + REFUSED_PAUSE.getSeconds() + " seconds at a time until it answers again. "
+                                + "Lookups it would answer fail meanwhile and follow on-lookup-failure.");
+                    }
                     problems.add(name + ": " + ex.getMessage());
                     failed.add(name);
                     continue;
                 } catch (LookupException | RuntimeException ex) {
-                    problems.add(name + ": " + Text.message(ex));
+                    String problem = Text.message(ex);
+                    if (state.failure(problem)) {
+                        alerts.problem(name + " failed " + FAILURES_BEFORE_ALERT + " lookups in a row, last: " + problem
+                                + ". Lookups it would answer fail meanwhile and follow on-lookup-failure.");
+                    }
+                    problems.add(name + ": " + problem);
                     failed.add(name);
                     continue;
                 }
+                if (state.answered()) alerts.recovered(name + " answers lookups again.");
                 answers.put(name, info);
             }
             if (needsCountry && !Countries.normalize(info.countryCode()).isPresent()) {
@@ -178,6 +263,22 @@ public final class ProviderChain {
     /** False when {@code vpn-from} is empty, so answers carry no real VPN or proxy flags. */
     public boolean checksVpn() {
         return !vpnFrom.isEmpty();
+    }
+
+    /** One line per provider for {@code origingate status}, followed by any paused API keys. */
+    public List<String> status() {
+        Instant now = clock.instant();
+        List<String> lines = new ArrayList<>();
+        for (LookupProvider provider : all()) {
+            String name = provider.name();
+            lines.add(name + ": " + health.get(name).describe(now) + ", " + stats.requestsToday(name) + " requests today");
+            for (String key : provider.keyStatus(now)) lines.add("  " + key);
+        }
+        return lines;
+    }
+
+    static long seconds(Instant now, Instant until) {
+        return Math.max(1, (Duration.between(now, until).toMillis() + 999) / 1000);
     }
 
     /** For the startup line: "country from maxmind, proxycheck | vpn from proxycheck, iphub". */

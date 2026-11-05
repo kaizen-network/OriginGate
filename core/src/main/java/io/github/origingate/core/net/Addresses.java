@@ -39,6 +39,23 @@ public final class Addresses {
         return scope < 0 ? value : value.substring(0, scope);
     }
 
+    /**
+     * The key one lookup is shared under: the address itself for IPv4, and its /64 network for IPv6, written like
+     * {@code 2001:db8:0:0:0:0:0:0/64}. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it.
+     * Text that is not an IP literal is returned unchanged.
+     */
+    public static String lookupKey(String ip) {
+        Optional<InetAddress> parsed = parse(ip);
+        if (!parsed.isPresent() || !(parsed.get() instanceof Inet6Address)) return ip;
+        byte[] bytes = parsed.get().getAddress();
+        for (int i = 8; i < bytes.length; i++) bytes[i] = 0;
+        try {
+            return text(InetAddress.getByAddress(bytes)) + "/64";
+        } catch (UnknownHostException ex) {
+            return ip;
+        }
+    }
+
     /** Loopback, private, link-local, unique local, or unspecified addresses. */
     public static boolean isPrivate(InetAddress address) {
         if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()

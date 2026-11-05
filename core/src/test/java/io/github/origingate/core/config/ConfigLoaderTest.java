@@ -47,6 +47,60 @@ class ConfigLoaderTest {
         assertEquals(directory.resolve("data/origingate.db").toAbsolutePath().normalize(), config.storage().sqliteFile());
     }
 
+    @Test void newSettingsDefaultToOffForNewInstalls() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory);
+        assertEquals(2500, config.lookup().waitMillis());
+        assertEquals(0, config.lookup().maxLookupsPerMinute());
+        assertFalse(config.rules().hosting().enabled());
+        assertEquals(List.of("origingate.bypass.hosting"), config.rules().hosting().bypassPermissions());
+        assertFalse(config.rules().denyNetworks().enabled());
+        assertEquals(List.of("origingate.bypass.deny-networks"), config.rules().denyNetworks().bypassPermissions());
+    }
+
+    /** The files a 1.0.0 install wrote, unchanged, must load and mean exactly what they meant in 1.0.0. */
+    @Test void unchanged100FilesLoadAsBefore() throws Exception {
+        TestSupport.copyResource("/upgrade/config-1.0.0.yml", directory.resolve("config.yml"));
+        TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
+        OriginGateConfig legacy = ConfigLoader.load(directory);
+        assertEquals(5000, legacy.lookup().waitMillis(), "an existing install keeps its wait-millis");
+        assertEquals(0, legacy.lookup().maxLookupsPerMinute());
+        assertFalse(legacy.rules().hosting().enabled());
+        assertTrue(legacy.rules().hosting().bypassPermissions().isEmpty());
+        assertFalse(legacy.rules().denyNetworks().enabled());
+        assertTrue(legacy.rules().denyNetworks().asns().isEmpty());
+
+        OriginGateConfig current = TestSupport.config(directory, "lookup.wait-millis", 5000,
+                "lookup.max-lookups-per-minute", TestSupport.REMOVE, "rules.hosting", TestSupport.REMOVE,
+                "rules.deny-networks", TestSupport.REMOVE);
+        assertEquals(current, legacy, "apart from the new defaults, the 1.0.0 file reads the same as the current one");
+
+        TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
+        Messages messages = Messages.load(directory);
+        assertTrue(messages.kick(Rule.HOSTING).contains("hosting or datacenter networks"), "missing kicks use the bundled text");
+        assertTrue(messages.kick(Rule.DENY_NETWORKS).contains("Connections from your network are not allowed"));
+        assertTrue(messages.kick(Rule.VPN).contains("VPN connections are not allowed"));
+        assertTrue(messages.alertLookupProblem().contains("<message>"));
+        assertTrue(messages.alertLookupRecovered().contains("<message>"));
+    }
+
+    @Test void newRulesAreChecked() throws Exception {
+        assertTrue(failure("rules.hosting.enabled", true, "lookup.vpn-from", List.of("iphub"),
+                "lookup.iphub.api-keys", List.of("example-key")).contains("rules.hosting needs proxycheck or ip-api"));
+        assertTrue(TestSupport.config(directory, "rules.hosting.enabled", true, "lookup.vpn-from", List.of("ip-api"))
+                .rules().hosting().enabled());
+        assertTrue(failure("rules.deny-networks.enabled", true, "lookup.country-from", List.of("maxmind"),
+                "lookup.vpn-from", List.of(), "rules.vpn.enabled", false, "rules.proxy.enabled", false)
+                .contains("rules.deny-networks needs a provider other than maxmind"));
+        assertTrue(failure("rules.deny-networks.asns", List.of("AS-12")).contains("needs AS numbers"));
+        assertTrue(failure("rules.deny-networks.organisations", List.of("ab")).contains("at least 3 characters"));
+        OriginGateConfig.NetworkRule networks = TestSupport.config(directory, "rules.deny-networks.asns", List.of("64496", "as64511"),
+                "rules.deny-networks.organisations", List.of("Example Hosting")).rules().denyNetworks();
+        assertEquals(List.of("AS64496", "AS64511"), networks.asns());
+        assertEquals(List.of("example hosting"), networks.organisations());
+        assertTrue(failure("lookup.max-lookups-per-minute", -1).contains("from 0 to 100000"));
+        assertTrue(failure("rules.hosting.typo", true).contains("Unknown setting: rules.hosting.typo"));
+    }
+
     @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {
         OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", TestSupport.REMOVE,
                 "lookup.vpn-from", TestSupport.REMOVE, "lookup.iphub", TestSupport.REMOVE, "lookup.ip-api", TestSupport.REMOVE,

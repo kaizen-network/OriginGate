@@ -14,12 +14,13 @@ import java.util.Map;
 /**
  * ip-api.com JSON API. Format reference: https://ip-api.com/docs/api:json
  * Without a key, the free endpoint is used: plain HTTP, 45 requests per minute, no commercial use.
- * With a key, the Pro endpoint over HTTPS. {@code proxy: true} (proxy, VPN, or Tor exit) counts as a VPN.
+ * With a key, the Pro endpoint over HTTPS. {@code proxy: true} (proxy, VPN, or Tor exit) counts as a VPN, and
+ * {@code hosting: true} sets the network type to {@link IpInfo#HOSTING}.
  */
 public final class IpApiProvider implements LookupProvider {
     public static final URI FREE_URL = URI.create("http://ip-api.com/json/");
     public static final URI PRO_URL = URI.create("https://pro.ip-api.com/json/");
-    static final String FIELDS = "status,message,country,countryCode,regionName,city,isp,org,as,proxy";
+    static final String FIELDS = "status,message,country,countryCode,regionName,city,isp,org,as,proxy,hosting";
     private static final String LABEL = "ip-api";
     private final HttpLookup http;
     private final String baseUrl;
@@ -52,8 +53,9 @@ public final class IpApiProvider implements LookupProvider {
         if (!"success".equals(status)) throw new LookupException(LABEL + " answered status " + status + Json.message(root));
         String as = Json.text(root, "as");
         String asn = as != null && as.startsWith("AS") ? as.split(" ", 2)[0] : null;
+        // ip-api has no network type, only a hosting flag, so it is stored as the type proxycheck.io uses for it.
         return new IpInfo(ip, Json.text(root, "isp"), Json.text(root, "org"), null, Json.text(root, "city"),
                 Json.text(root, "regionName"), Json.text(root, "country"), Json.text(root, "countryCode"), asn,
-                Json.bool(root, "proxy"), false, null, checkedAt);
+                Json.bool(root, "proxy"), false, Json.bool(root, "hosting") ? IpInfo.HOSTING : null, checkedAt);
     }
 }

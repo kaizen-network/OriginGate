@@ -24,13 +24,20 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import io.github.origingate.core.lookup.LookupStats;
 
 /** Everything built from one config: storage, lookups, rules, and the decision log. Replaced on reload. */
 public final class OriginGateRuntime implements AutoCloseable {
     public static final String VERSION = BuildInfo.VERSION;
     private static final int WORKERS = 4;
     private static final int QUEUE = 256;
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm z");
 
     private final OriginGateConfig config;
     private final Messages messages;
@@ -41,11 +48,14 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final Gate gate;
     private final DecisionFile decisionFile;
     private final Clock clock;
+    private final LookupStats stats;
+    /** False once replaced or closed, so a retired runtime sends no more alerts. */
+    private final AtomicBoolean current;
     private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
-                              Clock clock) {
+                              Clock clock, LookupStats stats, AtomicBoolean current) {
         this.config = config;
         this.messages = messages;
         this.storage = storage;
@@ -55,6 +65,8 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.gate = gate;
         this.decisionFile = decisionFile;
         this.clock = clock;
+        this.stats = stats;
+        this.current = current;
     }
 
     /** Copies the default config.yml and messages.yml when they do not exist yet. */
@@ -71,6 +83,12 @@ public final class OriginGateRuntime implements AutoCloseable {
     }
 
     public static OriginGateRuntime load(Path dataDirectory, Log baseLog) throws ConfigException, SQLException {
+        return load(dataDirectory, baseLog, new LookupStats(), Alerts.NONE);
+    }
+
+    /** {@code stats} outlives reloads; {@code alerts} receives lookup problems while this runtime is the active one. */
+    public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts)
+            throws ConfigException, SQLException {
         OriginGateConfig config = ConfigLoader.load(dataDirectory);
         Messages messages = Messages.load(dataDirectory);
         Log log = Log.withDebug(baseLog, config.consoleLog() == OriginGateConfig.ConsoleLog.DEBUG);
@@ -90,12 +108,18 @@ public final class OriginGateRuntime implements AutoCloseable {
                 new ArrayBlockingQueue<>(QUEUE), threads(), new ThreadPoolExecutor.AbortPolicy());
         workers.allowCoreThreadTimeOut(true);
         Duration maxAge = Duration.ofDays(settings.maxAgeDays());
-        Providers providers = Providers.start(config.lookup(), http, clock, log, "OriginGate/" + VERSION);
+        AtomicBoolean current = new AtomicBoolean(true);
+        Alerts whileCurrent = new Alerts() {
+            @Override public void problem(String message) { if (current.get()) alerts.problem(message); }
+            @Override public void recovered(String message) { if (current.get()) alerts.recovered(message); }
+        };
+        Providers providers = Providers.start(config.lookup(), http, clock, log, "OriginGate/" + VERSION, whileCurrent, stats);
         LookupService lookups = new LookupService(providers.chain(), storage,
-                new MemoryCache(settings.memoryCacheSize(), maxAge, clock), maxAge, workers, clock, log);
+                new MemoryCache(settings.memoryCacheSize(), maxAge, clock), maxAge, workers, clock, log,
+                config.lookup().maxLookupsPerMinute(), stats, whileCurrent);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log),
-                decisionFile, clock);
+                decisionFile, clock, stats, current);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -163,6 +187,27 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     public Gate gate() { return gate; }
 
+    /** The lines of {@code origingate status}: lookups since the plugin started, the budget, and each provider. */
+    public List<String> status() {
+        List<String> lines = new ArrayList<>();
+        long answered = stats.memory() + stats.storage() + stats.provider();
+        int rate = stats.hitRatePercent();
+        lines.add("Lookups since " + TIME.format(stats.since().atZone(ZoneId.systemDefault())) + ": " + answered
+                + " answered (memory " + stats.memory() + ", storage " + stats.storage() + ", providers " + stats.provider()
+                + "), cache hit rate " + (rate < 0 ? "-" : rate + "%"));
+        lines.add("Not answered: " + stats.failed() + " failed, " + stats.dropped() + " dropped after every login "
+                + "stopped waiting, " + stats.overBudget() + " over the budget");
+        LookupService lookups = gate.lookups();
+        lines.add("Budget: " + (lookups.budgetPerMinute() == 0 ? "no limit (max-lookups-per-minute: 0)"
+                : lookups.budgetUsed() + " of " + lookups.budgetPerMinute() + " lookups in the last minute"));
+        lines.add("Memory cache: " + lookups.cache().size() + " entries");
+        lines.add("Providers (" + providers.chain().describe() + "):");
+        for (String line : providers.chain().status()) lines.add("  " + line);
+        lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)
+                + (config.dryRun() ? ", dry run is on" : ""));
+        return lines;
+    }
+
     /** For the startup line, for example "country from maxmind, proxycheck | vpn from proxycheck". */
     public String lookupSummary() { return providers.chain().describe(); }
 
@@ -179,6 +224,7 @@ public final class OriginGateRuntime implements AutoCloseable {
      * (up to {@code wait-millis} plus two requests), then closes it in the background.
      */
     public void retire() {
+        current.set(false);
         providers.stopUpdates();
         long graceMillis = config.lookup().waitMillis() + 2L * config.lookup().longestRequestMillis();
         Thread closer = new Thread(() -> {
@@ -197,6 +243,7 @@ public final class OriginGateRuntime implements AutoCloseable {
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
+        current.set(false);
         workers.shutdown();
         try {
             // The HTTP client refuses new requests once shut down, so wait for queued lookups first.

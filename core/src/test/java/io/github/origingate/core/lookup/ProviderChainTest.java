@@ -157,4 +157,69 @@ class ProviderChainTest {
         assertEquals("country from maxmind, proxycheck | vpn from proxycheck, iphub",
                 chain(List.of(maxmind, proxycheck), List.of(proxycheck, iphub)).describe());
     }
+    private ProviderChain watched(FakeProvider provider, TestSupport.RecordingAlerts alerts, LookupStats stats) {
+        return new ProviderChain(List.of(provider), List.of(provider), Duration.ofSeconds(5), clock, Log.NONE, alerts, stats);
+    }
+
+    @Test void pausedProviderIsReportedOnceAndAgainWhenItAnswers() throws Exception {
+        FakeProvider provider = new FakeProvider("proxycheck").fail(IP, new KeyRejectedException("status denied: daily limit"));
+        TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
+        LookupStats stats = new LookupStats(clock, java.time.ZoneOffset.UTC);
+        ProviderChain chain = watched(provider, alerts, stats);
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertEquals(1, alerts.problems.size());
+        assertTrue(alerts.problems.get(0).contains("proxycheck refused the request (status denied: daily limit)"),
+                alerts.problems.get(0));
+        assertTrue(chain.status().get(0).startsWith("proxycheck: paused for 60 s after: status denied"), chain.status().toString());
+
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertEquals(1, provider.calls.get(), "a paused provider is not asked");
+        clock.advance(Duration.ofSeconds(61));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertEquals(2, provider.calls.get());
+        assertEquals(1, alerts.problems.size(), "a provider that is still refused is not reported again");
+
+        clock.advance(Duration.ofSeconds(61));
+        provider.answer(info(IP, "Canada", "CA", false, false));
+        chain.lookup(IP);
+        assertEquals(List.of("proxycheck answers lookups again."), alerts.recoveries);
+        assertEquals("proxycheck: ok, 3 requests today", chain.status().get(0));
+        assertEquals(3, stats.requestsToday("proxycheck"));
+    }
+
+    @Test void failuresInARowAreReportedOnceFromTheThird() throws Exception {
+        FakeProvider provider = new FakeProvider("ip-api").fail(IP, new LookupException("ip-api did not answer within 3500 ms"));
+        TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
+        ProviderChain chain = watched(provider, alerts, new LookupStats(clock, java.time.ZoneOffset.UTC));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertTrue(alerts.problems.isEmpty(), "two failures may be bad luck");
+        assertTrue(chain.status().get(0).startsWith("ip-api: failing (2 in a row"), chain.status().toString());
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertEquals(1, alerts.problems.size());
+        assertTrue(alerts.problems.get(0).contains("ip-api failed 3 lookups in a row, last: ip-api did not answer within 3500 ms"),
+                alerts.problems.get(0));
+        assertEquals(4, provider.calls.get(), "timeouts and server errors do not pause the provider");
+
+        provider.answer(info(IP, "Canada", "CA", false, false));
+        chain.lookup(IP);
+        assertEquals(1, alerts.recoveries.size());
+        chain.lookup(IP);
+        assertEquals(1, alerts.recoveries.size(), "a provider that was fine is not reported");
+    }
+
+    @Test void oneSuccessResetsTheFailureCount() throws Exception {
+        FakeProvider provider = new FakeProvider("proxycheck").fail(IP, new LookupException("HTTP 502"))
+                .answer(info("192.0.2.11", "Canada", "CA", false, false));
+        TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
+        ProviderChain chain = watched(provider, alerts, new LookupStats(clock, java.time.ZoneOffset.UTC));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        chain.lookup("192.0.2.11");
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertThrows(LookupException.class, () -> chain.lookup(IP));
+        assertTrue(alerts.problems.isEmpty());
+        assertTrue(alerts.recoveries.isEmpty());
+    }
 }

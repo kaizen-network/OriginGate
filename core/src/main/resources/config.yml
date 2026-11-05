@@ -22,7 +22,10 @@ lookup:
   # What to do when the lookup fails or takes longer than wait-millis: allow or deny.
   on-lookup-failure: allow
   # Longest time a login waits for the lookup, in milliseconds (1000-20000).
-  wait-millis: 5000
+  wait-millis: 2500
+  # Most lookups sent to providers in any 60 seconds (0-100000), so a wave of bots cannot use up a provider's
+  # daily quota. Logins over it are not looked up and follow on-lookup-failure. 0 means no limit.
+  max-lookups-per-minute: 0
   # Providers asked for the country, in order. When one fails, the next one is asked.
   # Any of: proxycheck, iphub, ip-api, ipinfo, maxmind.
   country-from: [proxycheck]
@@ -106,6 +109,16 @@ rules:
     # IP addresses or CIDR ranges, for example ["203.0.113.0/24"].
     list: []
     bypass-permissions: []
+  # Kicks networks you list by AS number or name, for example a hosting company that VPN services rent from.
+  # Works with every provider except maxmind, which has no network data.
+  deny-networks:
+    enabled: false
+    # AS numbers, for example [AS64496].
+    asns: []
+    # Text to look for in the network's provider, organisation, or VPN operator name, ignoring case.
+    # For example ["Example Hosting"]. At least 3 characters each.
+    organisations: []
+    bypass-permissions: ["origingate.bypass.deny-networks"]
   # Kicks IPs that the vpn-from provider flags as a VPN.
   vpn:
     enabled: true
@@ -116,6 +129,12 @@ rules:
     # Proxies from these countries are allowed. Two-letter codes, for example [US, GB].
     allowed-countries: []
     bypass-permissions: ["origingate.bypass.proxy"]
+  # Kicks IPs on hosting and datacenter networks (rented servers, cloud providers), where VPNs and bots often run
+  # without being flagged as either. Needs proxycheck or ip-api in vpn-from. IPHub has no separate hosting flag;
+  # it already counts hosting networks as VPNs.
+  hosting:
+    enabled: false
+    bypass-permissions: ["origingate.bypass.hosting"]
   # Kicks players by country.
   country:
     enabled: false
@@ -126,7 +145,8 @@ rules:
     bypass-permissions: ["origingate.bypass.country"]
 
 alerts:
-  # Online staff with any of these permissions see kicks and bypasses in chat.
+  # Online staff with any of these permissions see kicks and bypasses in chat, and one message when a lookup
+  # provider stops answering or the lookup budget is used up, and one when that is over.
   permissions: ["origingate.alerts"]
 
 # Write every login where a rule matched or the lookup failed to daily files in the logs folder.

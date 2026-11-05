@@ -32,19 +32,32 @@ final class YamlSection {
         }
         try {
             if (Files.size(file) > MAX_FILE_BYTES) throw new ConfigException(name + " is larger than 64 KiB");
-            LoaderOptions options = new LoaderOptions();
-            options.setAllowDuplicateKeys(false);
-            options.setMaxAliasesForCollections(10);
-            options.setCodePointLimit(MAX_FILE_BYTES);
-            Object raw;
             try (InputStream input = Files.newInputStream(file)) {
-                raw = new Yaml(new SafeConstructor(options)).load(input);
+                return parse(input, name);
             }
-            if (!(raw instanceof Map<?, ?>)) throw new ConfigException(name + " must contain a YAML map");
-            return new YamlSection((Map<?, ?>) raw, "");
         } catch (IOException | RuntimeException ex) {
             throw new ConfigException("Cannot read " + name + ": " + ex.getMessage(), ex);
         }
+    }
+
+    /** A file bundled in the plugin JAR, such as the default messages.yml. */
+    static YamlSection resource(String name) throws ConfigException {
+        try (InputStream input = YamlSection.class.getResourceAsStream("/" + name)) {
+            if (input == null) throw new ConfigException("Missing bundled " + name);
+            return parse(input, name);
+        } catch (IOException | RuntimeException ex) {
+            throw new ConfigException("Cannot read the bundled " + name + ": " + ex.getMessage(), ex);
+        }
+    }
+
+    private static YamlSection parse(InputStream input, String name) throws ConfigException {
+        LoaderOptions options = new LoaderOptions();
+        options.setAllowDuplicateKeys(false);
+        options.setMaxAliasesForCollections(10);
+        options.setCodePointLimit(MAX_FILE_BYTES);
+        Object raw = new Yaml(new SafeConstructor(options)).load(input);
+        if (!(raw instanceof Map<?, ?>)) throw new ConfigException(name + " must contain a YAML map");
+        return new YamlSection((Map<?, ?>) raw, "");
     }
 
     String key(String name) { return path.isEmpty() ? name : path + "." + name; }
