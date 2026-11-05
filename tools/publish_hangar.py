@@ -52,7 +52,8 @@ def platform_versions_since(groups, minimum):
     return versions[:versions.index(minimum) + 1][::-1]
 
 
-def request(method, path, jwt, body=None, content_type=None):
+def request(method, path, jwt, body=None, content_type=None, missing_ok=False):
+    """Parsed JSON, or None for a 404 when missing_ok is set."""
     headers = {'User-Agent': USER_AGENT, **({'Authorization': f'HangarAuth {jwt}'} if jwt else {})}
     if content_type:
         headers['Content-Type'] = content_type
@@ -62,6 +63,8 @@ def request(method, path, jwt, body=None, content_type=None):
             text = response.read().decode('utf-8')
             return json.loads(text) if text else None
     except urllib.error.HTTPError as error:
+        if missing_ok and error.code == 404:
+            return None
         detail = error.read().decode('utf-8', 'replace')[:500]
         shown = path.split('?')[0]  # keeps the API key out of the log
         raise SystemExit(f'Hangar {method} {shown} failed: HTTP {error.code} {detail}') from None
@@ -106,9 +109,11 @@ def main():
     # Dry run without a token: draft projects are not readable anonymously,
     # so check everything except the project lookup.
     jwt = request('POST', f'/authenticate?apiKey={urllib.parse.quote(token)}', None)['token'] if token else None
-    existing = request('GET', f'/projects/{project}/versions?limit=25', jwt)['result'] if jwt else []
+    # Hangar answers 404 for a version that is not uploaded yet.
+    existing = request('GET', f'/projects/{project}/versions/{urllib.parse.quote(version, safe="")}', jwt,
+                       missing_ok=True) if jwt else None
 
-    if any(v['name'] == version for v in existing):
+    if existing is not None:
         print(f'skip {version}: already on Hangar')
     else:
         file_paths, files, platform_deps, plugin_deps = [], [], {}, {}
