@@ -55,10 +55,10 @@ class PublishHangarTest(unittest.TestCase):
 
         project = json.loads((Path(__file__).parent / 'hangar.json').read_text(encoding='utf-8'))['project']
         with mock.patch.object(ph, 'request', fake), mock.patch.dict(os.environ, {'HANGAR_TOKEN': 'key'}), \
-                mock.patch.object(sys, 'argv', ['publish_hangar.py', '--tag', 'v0.3.0', '--dist', 'unused']), \
+                mock.patch.object(sys, 'argv', ['publish_hangar.py', '--tag', 'v1.0.0', '--dist', 'unused']), \
                 mock.patch('builtins.print'):
             ph.main()
-        self.assertIn(('GET', f'/projects/{project}/versions/0.3.0', True), calls)
+        self.assertIn(('GET', f'/projects/{project}/versions/1.0.0', True), calls)
         self.assertFalse(any(path.endswith('/upload') for _, path, _ in calls))
 
 

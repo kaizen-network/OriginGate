@@ -65,5 +65,5 @@ Versions with a `-` go to the `Snapshot` channel, others to `Release`. The API c
 To check what would be sent without uploading, put the JARs in a folder and run:
 
 ```powershell
-python tools/publish_hangar.py --tag v0.3.0 --dist path/to/jars --dry-run
+python tools/publish_hangar.py --tag v1.0.0 --dist path/to/jars --dry-run
 ```
