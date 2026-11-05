@@ -13,7 +13,7 @@
 - IPv6: a flagged answer turning away its /64 neighbour without a lookup, a clean answer never shared, neighbours looked up at once getting their own lookups, the no-country pause per address
 - Dropping a queued lookup once its login stopped waiting, keeping it while any caller still waits, the lookups-per-minute budget with one alert and one recovery, `on-budget-exceeded` and its fallback to `on-lookup-failure`, and the status counters
 - Provider health: one alert on a pause and none while it stays paused, one after 3 failures in a row, one recovery, refused API keys, and the `status` lines
-- The offline-mode warning for each server mode, and a real runtime sending one staff alert when a stub provider answers 429
+- The offline-mode warning for each server mode (only owner-set `bypass.players` and `bypass.permissions` count; BungeeCord IP forwarding always gets one line), the caution on name and permission bypasses, and a real runtime sending one staff alert when a stub provider answers 429
 - The SQLite error message on a system without a bundled native library
 - CIDR matching for IPv4 and IPv6, and literal-only IP parsing (no DNS)
 - SQLite storage, including a provider name with `'`, setup once an unreachable database answers, and a setup problem failing at startup
@@ -41,7 +41,7 @@ python tools/run_platform_probe.py paper --server path/to/paper.jar --bukkit-api
 
 Paper and newer Spigot tests use a local `minecraft-protocol` Node dependency through `--modules`. Choose a compatible `--client-version`. Paper 1.21.7 and 1.21.8 share a protocol. For simultaneous test servers, choose distinct `--port` and `--run-name` values. The Bungee probe also uses the next port for a dummy backend and checks that another plugin cannot route a denied player there.
 
-Both probes also check the 1.1.0 changes: the offline-mode warning at startup; the unchanged 1.0.0 `config.yml` and `messages.yml` loading; the hosting rule; the lookup budget with `on-lookup-failure` and `on-budget-exceeded`; one alert after 3 failures in a row and one recovery; one alert for a provider paused by HTTP 429, no request while it is paused, and one recovery after the 60-second pause; `origingate status`; and 8 logins at once from 8 loopback addresses (`127.0.0.10` to `127.0.0.17`), where 4 lookups run and the 4 queued past their login's wait are dropped without a request. On Paper, a second client (`tools/platform_staff_client.cjs`) stays online with `origingate.alerts` and must receive the pause and recovery alerts in chat, and the server is restarted twice: behind Velocity modern forwarding there is no warning, behind BungeeCord IP forwarding there is one. The pause check waits 61 seconds.
+Both probes also check the 1.1.0 changes: the offline-mode warning for the probe's `bypass.permissions` and the caution on a used bypass; the unchanged 1.0.0 `config.yml` and `messages.yml` loading; the hosting rule; the lookup budget with `on-lookup-failure` and `on-budget-exceeded`; one alert after 3 failures in a row and one recovery; one alert for a provider paused by HTTP 429, no request while it is paused, and one recovery after the 60-second pause; `origingate status`; and 8 logins at once from 8 loopback addresses (`127.0.0.10` to `127.0.0.17`), where 4 lookups run and the 4 queued past their login's wait are dropped without a request. On Paper, a second client (`tools/platform_staff_client.cjs`) stays online with `origingate.alerts` and must receive the pause and recovery alerts in chat, and the server is restarted twice: behind Velocity modern forwarding there is no warning, behind BungeeCord IP forwarding there is one. The pause check waits 61 seconds.
 
 ## Docs check
 
@@ -123,7 +123,7 @@ Checks:
 13. API keys are sent as a proper `key` parameter and used in turn.
 14. The check command works, and kicks are written to the daily log file.
 15. `console-log: kicks` prints a kick but not a normal join.
-16. The offline-mode warning appears at startup.
+16. The shipped per-rule bypass permissions cause no offline-mode warning, `bypass.players` does, and a used bypass gets the caution.
 17. The unchanged 1.0.0 `config.yml` and `messages.yml` load, and a private address joins without a lookup.
 18. The hosting rule kicks a stubbed `Hosting` network and lets a residential one in.
 19. Over `max-lookups-per-minute`, a login follows `on-lookup-failure`, or `on-budget-exceeded: deny` when set, with one alert.

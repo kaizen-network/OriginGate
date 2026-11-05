@@ -547,8 +547,17 @@ def run_110(probe, backend):
     """Checks for the 1.1.0 changes. The proxy runs in offline mode, as the probe needs."""
     stub = probe.stub
 
-    assert "This server or proxy runs in offline mode" in probe.log_text(), "no offline-mode warning at startup"
-    probe.ok("offline-mode warning at startup names the bypasses anyone can claim")
+    assert "runs in offline mode" not in probe.log_text(), "the shipped per-rule permissions alone must not warn"
+    bypass_line = next(line for line in probe.log_text().splitlines() if "BYPASS rule=vpn player=ProbeBypass" in line)
+    assert 'caution="anyone can claim this name in offline mode"' in bypass_line, bypass_line
+    offset = len(probe.log_text())
+    probe.write_config(raw=CONFIG.format(
+        dry_run="false", failure="allow", wait=3000, request_timeout=2500, port=stub.port, fixture=probe.fixture,
+        deny="false", country="false", console_log="all", extra_lookup="", extra_rules="")
+        .replace("  players: []", '  players: ["ProbeNamed"]', 1))
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.wait_log("This server or proxy runs in offline mode, so anyone can join with any name, and bypass.players follows the name", offset=offset)
+    probe.ok("offline mode: no startup warning for the shipped permissions, a warning for bypass.players, a caution on a used bypass")
 
     messages = DATA / "messages.yml"
     current_messages = messages.read_text(encoding="utf-8")

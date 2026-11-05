@@ -163,7 +163,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
         Component message = render(template, attempt, decision);
-        if (message != null) sendToStaff(active, message);
+        if (message != null) sendToStaff(active, MessagesRenderer.withCaution(message, decision));
     }
     /** Lookup alerts come from worker threads; BungeeCord's sendMessage is safe from any thread. */
     private void staffAlert(OriginGateRuntime active, String template, String text) {

@@ -111,12 +111,14 @@ lookup:
   on-budget-exceeded: deny
 ```
 
-During a bot flood, every new address costs one provider lookup. With a limit, lookups over it are not sent, so the provider's daily quota lasts. A login over the limit follows `on-budget-exceeded`:
+During a bot flood, every new address costs one provider lookup. With a limit, lookups over it are not sent, so the provider's daily quota lasts. The limit is off (`0`) by default. Turn it on, together with `on-budget-exceeded: deny`, when bot waves of new addresses use up your provider's daily lookups or you are under attack right now; pick a limit above the number of new addresses your busiest minute normally sees. A login over the limit follows `on-budget-exceeded`:
 
 - Not set (the default): the same as `on-lookup-failure`, so with `allow` those players get in unchecked, as they would when the provider is down.
 - `deny`: those players are kicked with the `lookup-failure` message and can join again once the flood is over. Players looked up within `storage.max-age-days` are still answered from memory or storage and are not affected. Use it as an attack mode while you are being flooded.
 
 Staff with an alert permission get one message when the limit is reached and one when it has room again, with how many addresses went unchecked. `origingate status` shows how much of the limit the last minute used.
+
+Separately from the limit, and always on: a lookup still queued when every login waiting for it has given up (after `wait-millis`) is dropped without asking a provider, so a burst of logins does not spend lookups on answers nobody uses.
 
 ### Country rules only, no web requests
 
@@ -135,14 +137,16 @@ rules:
 
 In offline mode, anyone can join with any name. The UUID is made from the name, and permission plugins such as LuckPerms load permissions by that UUID before any login plugin runs. So in offline mode, `bypass.players` and every bypass permission (global or per rule) can be claimed by anyone who picks a name that has one. Only `bypass.addresses` holds up.
 
-OriginGate logs a warning at startup and reload when it runs where names are not checked and any of those bypasses are set:
+OriginGate tells you in two ways where names are not checked (offline mode, an offline-mode proxy, or BungeeCord IP forwarding):
 
-| Where OriginGate runs | Warning |
+- At startup and reload, a warning when you set `bypass.players` or `bypass.permissions`. The per-rule `bypass-permissions` in the default config do not count, since nobody holds them until you grant them.
+- When a player actually gets in through `bypass.players`, `bypass.permissions`, or a rule's bypass permission, the log line ends with `caution="anyone can claim this name in offline mode"`, and the staff alert for a rule bypass carries the same note.
+
+| Where OriginGate runs | Startup warning |
 | --- | --- |
 | Online-mode server or proxy | No |
-| Offline-mode server or proxy | Yes |
 | Paper behind Velocity with modern forwarding (`proxies.velocity.enabled`, from an online-mode proxy) | No. The forwarded name and UUID are signed |
-| Spigot or Paper behind BungeeCord IP forwarding (`settings.bungeecord: true`) | Yes. Anyone who can reach the server's own port can fake the name, UUID, and IP address. It is only safe while the port accepts connections from the proxy alone |
-| Paper behind an offline-mode proxy (`online-mode: false` in Paper's proxy settings) | Yes |
+| Offline-mode server or proxy, or Paper behind an offline-mode proxy (`online-mode: false` in Paper's proxy settings) | Only when `bypass.players` or `bypass.permissions` is set |
+| Spigot or Paper behind BungeeCord IP forwarding (`settings.bungeecord: true`) | Always, one line: anyone who can reach the server's own port can fake the name, UUID, and IP address and skip every check. It is only safe while the port accepts connections from the proxy alone |
 
-To silence it, remove the name, UUID, and permission bypasses (including the default `bypass-permissions` of each rule), or use online mode. Installing OriginGate on the proxy instead of the backends avoids the forwarding question entirely.
+Installing OriginGate on the proxy instead of the backends avoids the forwarding question entirely.

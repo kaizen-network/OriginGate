@@ -152,17 +152,41 @@ class RuntimeControllerTest {
     @Test void offlineModeWarningFollowsThePlatformModeOnStartAndReload() throws Exception {
         List<String> lines = new CopyOnWriteArrayList<>();
         OfflineModeWarning.Mode[] mode = {OfflineModeWarning.Mode.OFFLINE};
+        TestSupport.writeConfig(directory);
         try (RuntimeController controller = new RuntimeController(directory, recording(lines), () -> mode[0],
                 RuntimeController.StaffAlerts.NONE)) {
+            controller.reload();
+            assertTrue(lines.stream().noneMatch(line -> line.contains("offline mode")), "the default config has no owner-set bypass: " + lines);
+            TestSupport.writeConfig(directory, "bypass.players", List.of("ExampleStaff"));
             controller.reload();
             assertTrue(lines.stream().anyMatch(line -> line.startsWith("This server or proxy runs in offline mode")), lines.toString());
             lines.clear();
             mode[0] = OfflineModeWarning.Mode.MODERN_FORWARDING;
             controller.reload();
             assertTrue(lines.stream().noneMatch(line -> line.contains("offline mode")), lines.toString());
+            TestSupport.writeConfig(directory);
             mode[0] = OfflineModeWarning.Mode.LEGACY_FORWARDING;
             controller.reload();
-            assertTrue(lines.stream().anyMatch(line -> line.contains("BungeeCord IP forwarding")), lines.toString());
+            assertTrue(lines.stream().anyMatch(line -> line.startsWith("BungeeCord IP forwarding")), lines.toString());
+        }
+    }
+
+    @Test void bypassesGetACautionWhereNamesAreNotChecked() throws Exception {
+        TestSupport.writeConfig(directory, "bypass.permissions", List.of("example.staff"));
+        LoginAttempt staff = new LoginAttempt("Alex", null, InetAddress.getByName("192.0.2.1"), "example.staff"::equals);
+        try (RuntimeController offline = new RuntimeController(directory, Log.NONE, () -> OfflineModeWarning.Mode.OFFLINE,
+                RuntimeController.StaffAlerts.NONE)) {
+            offline.reload();
+            Decision decision = offline.runtime().gate().beforeLookup(staff).orElseThrow();
+            assertEquals(Decision.Outcome.ALLOW, decision.outcome());
+            assertEquals(io.github.origingate.core.rules.Gate.UNVERIFIED_NAME, decision.caution());
+            assertTrue(io.github.origingate.core.report.DecisionLine.format(staff, decision)
+                    .endsWith("caution=\"anyone can claim this name in offline mode\""));
+        }
+        try (RuntimeController online = new RuntimeController(directory, Log.NONE, () -> OfflineModeWarning.Mode.ONLINE,
+                RuntimeController.StaffAlerts.NONE)) {
+            online.reload();
+            assertNull(online.runtime().gate().beforeLookup(staff).orElseThrow().caution());
         }
     }
 

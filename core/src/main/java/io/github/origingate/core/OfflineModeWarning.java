@@ -2,15 +2,14 @@ package io.github.origingate.core;
 
 import io.github.origingate.core.config.OriginGateConfig;
 
-import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 /**
- * Warns when name, UUID, or permission bypasses are set on a server or proxy where anyone can claim any name.
+ * Warns when the owner set name or permission bypasses on a server or proxy where anyone can claim any name.
  * In offline mode the UUID comes from the name, and permission plugins load permissions by that UUID before any
- * login plugin runs, so only {@code bypass.addresses} holds up.
+ * login plugin runs, so only {@code bypass.addresses} holds up. The per-rule bypass permissions shipped in the default
+ * config are left out: nobody holds them until the owner grants them, and a bypass that is used is flagged in its
+ * log line and staff alert instead (see {@link io.github.origingate.core.rules.Gate#UNVERIFIED_NAME}).
  */
 public final class OfflineModeWarning {
     /** How the server or proxy OriginGate runs on learns who a player is. */
@@ -24,36 +23,36 @@ public final class OfflineModeWarning {
         /** Offline mode without forwarding, or behind an offline-mode proxy: anyone can use any name. */
         OFFLINE,
         /** Offline mode, but whether a proxy forwards checked identities could not be found out. */
-        UNKNOWN
+        UNKNOWN;
+
+        /** True where anyone may be able to join with any name. */
+        public boolean namesUnverified() {
+            return this != ONLINE && this != MODERN_FORWARDING;
+        }
     }
 
     private OfflineModeWarning() { }
 
     public static Optional<String> check(Mode mode, OriginGateConfig config) {
-        if (mode == Mode.ONLINE || mode == Mode.MODERN_FORWARDING) return Optional.empty();
+        if (!mode.namesUnverified()) return Optional.empty();
         boolean players = !config.bypass().players().isEmpty();
-        Set<String> permissions = new LinkedHashSet<>(config.bypass().permissions());
-        for (List<String> rule : config.rules().bypassPermissions()) permissions.addAll(rule);
-        if (!players && permissions.isEmpty()) return Optional.empty();
-        String bypasses = (players ? "player name and UUID bypasses (bypass.players)" : "")
-                + (players && !permissions.isEmpty() ? " and " : "")
-                + (permissions.isEmpty() ? "" : "permission bypasses (" + String.join(", ", permissions) + ")");
-        switch (mode) {
-            case LEGACY_FORWARDING:
-                return Optional.of("This server gets player names, UUIDs, and IP addresses through BungeeCord IP forwarding "
-                        + "(bungeecord: true), which anyone who can reach this server's port directly can fake. Then the "
-                        + bypasses + " can be claimed by anyone, and the IP checks see a made-up address. This is only safe "
-                        + "while this port accepts connections from the proxy alone. Prefer OriginGate on the proxy, or "
-                        + "Velocity modern forwarding.");
-            case UNKNOWN:
-                return Optional.of("This server runs in offline mode, and OriginGate could not tell whether a proxy "
-                        + "forwards checked player identities. Unless it sits behind an online-mode Velocity proxy with modern "
-                        + "forwarding, anyone can join with any name, so the " + bypasses + " can be claimed by anyone who "
-                        + "picks a name that has them. Only bypass.addresses holds up in offline mode.");
-            default:
-                return Optional.of("This server or proxy runs in offline mode, so anyone can join with any name. The " + bypasses
-                        + " follow that name, so anyone who picks a name that has one skips those checks. Only "
-                        + "bypass.addresses holds up in offline mode. Remove the others, or use online mode.");
+        boolean permissions = !config.bypass().permissions().isEmpty();
+        String set = players && permissions ? "bypass.players and bypass.permissions follow"
+                : players ? "bypass.players follows" : "bypass.permissions follow";
+        if (mode == Mode.LEGACY_FORWARDING) {
+            // Faked IP addresses skip every check, so this is worth one line even without bypasses.
+            return Optional.of("BungeeCord IP forwarding (bungeecord: true) is on: anyone who can reach this server's port "
+                    + "directly can fake their name, UUID, and IP address and skip every check"
+                    + (players || permissions ? " (" + set + " the name)" : "")
+                    + ". Let only the proxy reach this port, or use Velocity modern forwarding.");
         }
+        if (!players && !permissions) return Optional.empty();
+        if (mode == Mode.UNKNOWN) {
+            return Optional.of("This server runs in offline mode, and OriginGate could not tell whether a proxy with Velocity "
+                    + "modern forwarding checks names. If not, anyone can join with any name, and " + set
+                    + " the name. Only bypass.addresses holds up in offline mode.");
+        }
+        return Optional.of("This server or proxy runs in offline mode, so anyone can join with any name, and " + set
+                + " the name. Only bypass.addresses holds up in offline mode.");
     }
 }

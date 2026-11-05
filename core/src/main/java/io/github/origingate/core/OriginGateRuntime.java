@@ -89,6 +89,12 @@ public final class OriginGateRuntime implements AutoCloseable {
     /** {@code stats} outlives reloads; {@code alerts} receives lookup problems while this runtime is the active one. */
     public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts)
             throws ConfigException, SQLException {
+        return load(dataDirectory, baseLog, stats, alerts, false);
+    }
+
+    /** {@code namesUnverified}: anyone may join with any name, so name and permission bypasses get a caution. */
+    public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts,
+                                         boolean namesUnverified) throws ConfigException, SQLException {
         OriginGateConfig config = ConfigLoader.load(dataDirectory);
         Messages messages = Messages.load(dataDirectory);
         Log log = Log.withDebug(baseLog, config.consoleLog() == OriginGateConfig.ConsoleLog.DEBUG);
@@ -120,7 +126,7 @@ public final class OriginGateRuntime implements AutoCloseable {
                 // Only answers that a rule acts on are kept for a whole IPv6 /64; clean answers stay per address.
                 info -> Gate.match(config.rules(), info).isPresent());
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
-        return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log),
+        return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log, namesUnverified),
                 decisionFile, clock, stats, current);
     }
 

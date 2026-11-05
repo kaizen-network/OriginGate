@@ -148,8 +148,10 @@ def stop_server():
 HOSTING_RULE='  hosting:\n    enabled: true\n    bypass-permissions: ["origingate.bypass.hosting"]\n'
 def run_110():
     """Checks for the 1.1.0 changes. The test server runs in offline mode, as the probe needs."""
-    assert 'This server or proxy runs in offline mode' in log(),'no offline-mode warning at startup'
-    passed('offline-mode warning at startup')
+    assert 'This server or proxy runs in offline mode' in log(),'no offline-mode warning for the configured bypass.permissions'
+    bypass_line=next(line for line in log().splitlines() if 'ALLOW rule=- player=BypassProbe' in line)
+    assert 'caution="anyone can claim this name in offline mode"' in bypass_line,bypass_line
+    passed('offline mode: startup warning for the configured bypass.permissions, and a caution on the used bypass')
     current_messages=(DATA/'messages.yml').read_text(encoding='utf-8')
     try:
         shutil.copyfile(ROOT/'core/src/test/resources/upgrade/config-1.0.0.yml',DATA/'config.yml')

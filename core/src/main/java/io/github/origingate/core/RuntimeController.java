@@ -64,7 +64,8 @@ public final class RuntimeController implements AutoCloseable {
         if (closed) return "OriginGate is stopping.";
         try {
             OriginGateRuntime.installDefaults(directory);
-            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts);
+            OfflineModeWarning.Mode current = currentMode();
+            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified());
             if (closed) {
                 next.close();
                 return "OriginGate is stopping.";
@@ -76,7 +77,7 @@ public final class RuntimeController implements AutoCloseable {
                 retired.add(old);
                 old.retire();
             }
-            logStarted(next, old == null ? "OriginGate is running" : "OriginGate reloaded");
+            logStarted(next, old == null ? "OriginGate is running" : "OriginGate reloaded", current);
             return "OriginGate reloaded." + (next.config().dryRun() ? " Dry run is on: nobody is kicked." : "");
         } catch (Exception ex) {
             if (runtime == null) {
@@ -89,18 +90,19 @@ public final class RuntimeController implements AutoCloseable {
                     + ": " + Text.message(ex);
         }
     }
-    private void logStarted(OriginGateRuntime next, String prefix) {
+    private OfflineModeWarning.Mode currentMode() {
+        try {
+            return mode.get();
+        } catch (RuntimeException | LinkageError ex) {
+            return OfflineModeWarning.Mode.UNKNOWN;
+        }
+    }
+    private void logStarted(OriginGateRuntime next, String prefix, OfflineModeWarning.Mode current) {
         OriginGateConfig config = next.config();
         log.info(prefix + " with " + config.storage().type() + " storage" + (config.dryRun() ? " in DRY-RUN mode (nobody is kicked)" : "") + ".");
         log.info("Lookups: " + next.lookupSummary() + ".");
         if (config.lookup().uses("proxycheck") && config.lookup().proxycheck().apiKeys().isEmpty()) {
             log.warn("No proxycheck.io API keys are set; proxycheck.io allows 100 lookups per day without a key.", null);
-        }
-        OfflineModeWarning.Mode current;
-        try {
-            current = mode.get();
-        } catch (RuntimeException | LinkageError ex) {
-            current = OfflineModeWarning.Mode.UNKNOWN;
         }
         OfflineModeWarning.check(current, config).ifPresent(warning -> log.warn(warning, null));
     }

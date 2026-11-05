@@ -18,6 +18,11 @@ public final class MessagesRenderer {
     public static String legacy(Component message, boolean hexColors) {
         return (hexColors ? HEX : LegacyComponentSerializer.legacySection()).serialize(message);
     }
+    /** A staff alert with the decision's caution added, such as a bypass anyone can claim in offline mode. */
+    public static Component withCaution(Component alert, Decision decision) {
+        if (decision.caution() == null) return alert;
+        return alert.append(Component.text(" (" + decision.caution() + ")", net.kyori.adventure.text.format.NamedTextColor.GOLD));
+    }
     /** A lookup alert: {@code message} fills the {@code <message>} placeholder as plain text. */
     public static Component renderAlert(String template, String message) {
         return MiniMessage.miniMessage().deserialize(template, Placeholder.unparsed("message", message));

@@ -105,6 +105,21 @@ class GateTest {
         assertEquals(Rule.VPN, noBypass.rule());
     }
 
+    @Test void ruleBypassGetsACautionOnlyWhereNamesAreNotChecked() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, "bypass.players", List.of("Steve"));
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(),
+                new MemoryCache(100, Duration.ofDays(30), clock), Duration.ofDays(30), workers, clock, Log.NONE);
+        Gate offline = new Gate(config, lookups, Log.NONE, true);
+        Decision bypassed = run(offline, player("Alex", VPN_IP, "origingate.bypass.vpn"));
+        assertEquals(Outcome.BYPASS, bypassed.outcome());
+        assertEquals(Gate.UNVERIFIED_NAME, bypassed.caution());
+        assertEquals(Gate.UNVERIFIED_NAME, run(offline, player("Steve", VPN_IP)).caution(), "bypass.players too");
+        assertNull(run(offline, player("Alex", VPN_IP)).caution(), "a kick needs no caution");
+        assertNull(run(offline, player("Alex", HOME_IP)).caution(), "nor a normal join");
+        assertNull(run(new Gate(config, lookups, Log.NONE, false), player("Alex", VPN_IP, "origingate.bypass.vpn")).caution());
+    }
+
     @Test void vpnBypassDoesNotCoverTheProxyRule() throws Exception {
         Decision decision = run(gate(), player("Alex", PROXY_IP, "origingate.bypass.vpn"));
         assertEquals(Outcome.DENY, decision.outcome());

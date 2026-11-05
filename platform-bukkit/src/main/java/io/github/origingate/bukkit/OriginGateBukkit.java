@@ -220,8 +220,10 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     }
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
-        String message = render(template, attempt, decision, null);
-        if (message != null) sendToStaff(active, message);
+        String message;
+        try { message = MessagesRenderer.legacy(MessagesRenderer.withCaution(MessagesRenderer.render(template, attempt, decision), decision), hexColors); }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return; }
+        sendToStaff(active, message);
     }
     /** Lookup alerts come from worker threads, so they are sent on the main thread. */
     private void staffAlert(OriginGateRuntime active, String template, String text) {

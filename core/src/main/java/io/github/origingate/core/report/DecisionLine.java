@@ -34,6 +34,7 @@ public final class DecisionLine {
                     ? result.answeredBy().joined() : result.source().name().toLowerCase(Locale.ROOT));
         }
         if (decision.note() != null) quoted(line, "note", decision.note());
+        if (decision.caution() != null) quoted(line, "caution", decision.caution());
         return line.toString();
     }
 

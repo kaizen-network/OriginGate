@@ -14,45 +14,41 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OfflineModeWarningTest {
     @TempDir Path directory;
 
-    private OriginGateConfig noBypasses() throws Exception {
-        return TestSupport.config(directory, "rules.vpn.bypass-permissions", List.of(), "rules.proxy.bypass-permissions", List.of(),
-                "rules.country.bypass-permissions", List.of(), "rules.hosting.bypass-permissions", List.of(),
-                "rules.deny-networks.bypass-permissions", List.of());
-    }
-
     @Test void onlineModeAndModernForwardingNeverWarn() throws Exception {
         OriginGateConfig config = TestSupport.config(directory, "bypass.players", List.of("ExampleStaff"));
         assertFalse(OfflineModeWarning.check(Mode.ONLINE, config).isPresent());
         assertFalse(OfflineModeWarning.check(Mode.MODERN_FORWARDING, config).isPresent());
     }
 
-    @Test void offlineModeWithBypassesWarns() throws Exception {
-        String warning = OfflineModeWarning.check(Mode.OFFLINE,
+    @Test void theShippedPerRulePermissionsAloneDoNotWarn() throws Exception {
+        OriginGateConfig defaults = TestSupport.config(directory);
+        assertFalse(defaults.rules().vpn().bypassPermissions().isEmpty(), "the default config has per-rule permissions");
+        assertFalse(OfflineModeWarning.check(Mode.OFFLINE, defaults).isPresent());
+        assertFalse(OfflineModeWarning.check(Mode.UNKNOWN, defaults).isPresent());
+        assertFalse(OfflineModeWarning.check(Mode.OFFLINE,
+                TestSupport.config(directory, "bypass.addresses", List.of("192.0.2.0/24"))).isPresent());
+    }
+
+    @Test void ownerSetNameOrPermissionBypassesWarnInOfflineMode() throws Exception {
+        String players = OfflineModeWarning.check(Mode.OFFLINE,
                 TestSupport.config(directory, "bypass.players", List.of("ExampleStaff"))).orElseThrow();
-        assertTrue(warning.contains("offline mode"), warning);
-        assertTrue(warning.contains("bypass.players"), warning);
-        assertTrue(warning.contains("origingate.bypass.vpn"), "the default per-rule permissions count too: " + warning);
-        assertTrue(warning.contains("Only bypass.addresses holds up"), warning);
+        assertTrue(players.startsWith("This server or proxy runs in offline mode"), players);
+        assertTrue(players.contains("bypass.players follows the name"), players);
+        assertTrue(players.contains("Only bypass.addresses holds up"), players);
+        assertFalse(players.contains("origingate.bypass.vpn"), players);
+        String permissions = OfflineModeWarning.check(Mode.UNKNOWN,
+                TestSupport.config(directory, "bypass.permissions", List.of("example.staff"))).orElseThrow();
+        assertTrue(permissions.contains("could not tell"), permissions);
+        assertTrue(permissions.contains("bypass.permissions follow the name"), permissions);
     }
 
-    @Test void offlineModeWithOnlyAddressBypassesIsQuiet() throws Exception {
-        assertFalse(OfflineModeWarning.check(Mode.OFFLINE, noBypasses()).isPresent());
-        OriginGateConfig addresses = TestSupport.config(directory, "bypass.addresses", List.of("192.0.2.0/24"),
-                "rules.vpn.bypass-permissions", List.of(), "rules.proxy.bypass-permissions", List.of(),
-                "rules.country.bypass-permissions", List.of(), "rules.hosting.bypass-permissions", List.of(),
-                "rules.deny-networks.bypass-permissions", List.of());
-        assertFalse(OfflineModeWarning.check(Mode.OFFLINE, addresses).isPresent());
-    }
-
-    @Test void bungeeCordForwardingIsNotTreatedAsSafe() throws Exception {
-        String warning = OfflineModeWarning.check(Mode.LEGACY_FORWARDING, TestSupport.config(directory)).orElseThrow();
-        assertTrue(warning.contains("BungeeCord IP forwarding"), warning);
-        assertTrue(warning.contains("reach this server's port directly can fake"), warning);
-        assertTrue(warning.contains("Velocity modern forwarding"), warning);
-    }
-
-    @Test void unknownSetupWarnsWithTheCondition() throws Exception {
-        String warning = OfflineModeWarning.check(Mode.UNKNOWN, TestSupport.config(directory)).orElseThrow();
-        assertTrue(warning.contains("could not tell"), warning);
+    @Test void bungeeCordForwardingWarnsEvenWithoutBypasses() throws Exception {
+        String plain = OfflineModeWarning.check(Mode.LEGACY_FORWARDING, TestSupport.config(directory)).orElseThrow();
+        assertTrue(plain.startsWith("BungeeCord IP forwarding (bungeecord: true) is on"), plain);
+        assertTrue(plain.contains("fake their name, UUID, and IP address"), plain);
+        assertFalse(plain.contains("bypass."), plain);
+        String withBypasses = OfflineModeWarning.check(Mode.LEGACY_FORWARDING, TestSupport.config(directory,
+                "bypass.players", List.of("ExampleStaff"), "bypass.permissions", List.of("example.staff"))).orElseThrow();
+        assertTrue(withBypasses.contains("bypass.players and bypass.permissions follow the name"), withBypasses);
     }
 }

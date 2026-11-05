@@ -18,7 +18,7 @@ OriginGate is only as good as the IP address it sees. After the first joins, com
 
 - **Proxy protection services** (TCP or DDoS shields in front of the proxy): the service usually passes the real address with PROXY protocol or its own plugin. That must happen before Velocity's `LoginEvent`. Otherwise every player shows the service's address.
 - **Bedrock players through Geyser and Floodgate:** they must show their own address, not the local address of Geyser. If they show a local address, `skip-private-addresses: true` lets them in without a check.
-- **Offline mode:** anyone can join with any name, so name, UUID, and permission bypasses can be claimed by anyone. Only `bypass.addresses` holds up. OriginGate warns at startup when it finds this; see [offline mode and proxies](configuration.md#offline-mode-and-proxies).
+- **Offline mode:** anyone can join with any name, so name, UUID, and permission bypasses can be claimed by anyone. Only `bypass.addresses` holds up. OriginGate warns at startup about `bypass.players` and `bypass.permissions`, and marks every bypass it lets through with a caution; see [offline mode and proxies](configuration.md#offline-mode-and-proxies).
 
 ## Check permissions
 

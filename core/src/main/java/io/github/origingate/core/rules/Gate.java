@@ -28,15 +28,25 @@ import java.util.concurrent.TimeoutException;
  * lookup, then the deny-networks, vpn, proxy, hosting, and country rules. The first rule that matches decides.
  */
 public final class Gate {
+    /** Added to name and permission bypasses where names are not checked, for the log line and staff alert. */
+    public static final String UNVERIFIED_NAME = "anyone can claim this name in offline mode";
+
     private final OriginGateConfig config;
     private final LookupService lookups;
     private final Log log;
     private final Set<String> permissionNames;
+    private final String bypassCaution;
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log) {
+        this(config, lookups, log, false);
+    }
+
+    /** {@code namesUnverified}: offline mode or BungeeCord IP forwarding, where anyone can join with any name. */
+    public Gate(OriginGateConfig config, LookupService lookups, Log log, boolean namesUnverified) {
         this.config = config;
         this.lookups = lookups;
         this.log = log;
+        this.bypassCaution = namesUnverified ? UNVERIFIED_NAME : null;
         Set<String> names = new LinkedHashSet<>(config.bypass().permissions());
         for (List<String> rule : config.rules().bypassPermissions()) names.addAll(rule);
         this.permissionNames = Collections.unmodifiableSet(names);
@@ -95,10 +105,12 @@ public final class Gate {
         OriginGateConfig.Bypass bypass = config.bypass();
         if (bypass.players().contains(attempt.username().toLowerCase(Locale.ROOT))
                 || (attempt.uuid() != null && bypass.players().contains(attempt.uuid().toString()))) {
-            return Optional.of(allow("player is on the bypass list", null));
+            return Optional.of(allow("player is on the bypass list", null, bypassCaution));
         }
         if (contains(bypass.addresses(), address)) return Optional.of(allow("address is on the bypass list", null));
-        if (attempt.hasAny(bypass.permissions())) return Optional.of(allow("player has a global bypass permission", null));
+        if (attempt.hasAny(bypass.permissions())) {
+            return Optional.of(allow("player has a global bypass permission", null, bypassCaution));
+        }
 
         OriginGateConfig.AddressRule deny = config.rules().denyAddresses();
         if (deny.enabled() && contains(deny.list(), address)) {
@@ -175,11 +187,16 @@ public final class Gate {
                              LookupService.Result result, String note) {
         boolean bypassed = attempt.hasAny(bypassPermissions);
         log.debug("Rule " + rule.id() + " matched (" + note + "). Bypass permission? " + yesNo(bypassed));
-        return new Decision(bypassed ? Outcome.BYPASS : Outcome.DENY, rule, note, result, config.dryRun());
+        return new Decision(bypassed ? Outcome.BYPASS : Outcome.DENY, rule, note, result, config.dryRun(),
+                bypassed ? bypassCaution : null);
     }
 
     private Decision allow(String note, LookupService.Result result) {
-        return new Decision(Outcome.ALLOW, null, note, result, config.dryRun());
+        return allow(note, result, null);
+    }
+
+    private Decision allow(String note, LookupService.Result result, String caution) {
+        return new Decision(Outcome.ALLOW, null, note, result, config.dryRun(), caution);
     }
 
     private Decision failed(LoginAttempt attempt, Throwable error) {

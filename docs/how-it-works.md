@@ -33,7 +33,7 @@ A `bypass.addresses` entry wins over a `deny-addresses` entry.
 3. The [lookup providers](providers.md).
 
 - Only one request per IP runs at a time. Other logins from the same IP wait for it. `origingate check <ip> refresh` always makes its own request.
-- Answers are kept per address. An IPv6 answer that a rule acts on (deny-networks, VPN, proxy, hosting, or a country your country rule turns away) is also kept for the address's whole /64, so the next address in that /64 is turned away from memory without a new lookup. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it at will. A clean answer is never shared this way, because some hosts split one /64 between many customers, and one customer's clean address must not let a neighbour in.
+- Answers are kept per address. An IPv6 answer that a rule acts on (deny-networks, VPN, proxy, hosting, or a country your country rule turns away) is also kept for the address's whole /64, so the next address in that /64 is turned away from memory without a new lookup. This means a player can be kicked because another address in their /64 was flagged, without their own address being looked up; OriginGate 1.0.0 would have looked it up on its own. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it at will. A clean answer is never shared this way, because some hosts split one /64 between many customers, and one customer's clean address must not let a neighbour in.
 - Lookups run on 4 worker threads with a queue of 256. When the queue is full, the lookup fails and `on-lookup-failure` applies.
 - A lookup still waiting in the queue when every login that asked for it has stopped waiting (after `wait-millis`) is dropped without asking a provider, so a burst of logins does not spend quota on answers nobody uses.
 - With `max-lookups-per-minute`, provider lookups over that many in 60 seconds are not sent, and the login follows `on-budget-exceeded`. Answers from memory and storage do not count.
@@ -67,7 +67,7 @@ Each decision is one line, for example:
 DENY rule=vpn player=Alex uuid=... ip=... provider="..." organisation="..." country="..." country_code=.. city="..." type="..." vpn=yes proxy=no source=proxycheck note="flagged as VPN"
 ```
 
-Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`. `source` is `memory`, `storage`, or the providers that answered, such as `maxmind+proxycheck`.
+Labels: `ALLOW`, `BYPASS`, `DENY`, `WOULD-DENY`. `source` is `memory`, `storage`, or the providers that answered, such as `maxmind+proxycheck`. Where names are not checked, a player let in through a name or permission bypass gets `caution="anyone can claim this name in offline mode"`; see [offline mode and proxies](configuration.md#offline-mode-and-proxies).
 
 `console-log` sets which lines reach the console. Each level includes the ones before it:
 

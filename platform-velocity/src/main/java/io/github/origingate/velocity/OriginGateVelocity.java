@@ -152,7 +152,7 @@ public final class OriginGateVelocity {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
         Component message;
         try {
-            message = render(template, attempt, decision);
+            message = MessagesRenderer.withCaution(render(template, attempt, decision), decision);
         } catch (RuntimeException ex) {
             logger.warn("Could not build the staff alert: {}", Text.message(ex));
             return;
