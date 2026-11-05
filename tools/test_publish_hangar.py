@@ -58,6 +58,7 @@ class PublishHangarTest(unittest.TestCase):
                 mock.patch.object(sys, 'argv', ['publish_hangar.py', '--tag', 'v1.0.0', '--dist', 'unused']), \
                 mock.patch('builtins.print'):
             ph.main()
+        self.assertIn(('GET', f'/projects/{project}', False), calls)
         self.assertIn(('GET', f'/projects/{project}/versions/1.0.0', True), calls)
         self.assertFalse(any(path.endswith('/upload') for _, path, _ in calls))
 

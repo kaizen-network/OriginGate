@@ -109,6 +109,10 @@ def main():
     # Dry run without a token: draft projects are not readable anonymously,
     # so check everything except the project lookup.
     jwt = request('POST', f'/authenticate?apiKey={urllib.parse.quote(token)}', None)['token'] if token else None
+    if jwt:
+        # Stops on a wrong slug or a key that cannot see the project, which the
+        # version lookup below would mistake for a version not uploaded yet.
+        request('GET', f'/projects/{project}', jwt)
     # Hangar answers 404 for a version that is not uploaded yet.
     existing = request('GET', f'/projects/{project}/versions/{urllib.parse.quote(version, safe="")}', jwt,
                        missing_ok=True) if jwt else None
