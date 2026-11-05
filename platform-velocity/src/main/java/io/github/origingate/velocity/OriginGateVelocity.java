@@ -137,7 +137,12 @@ public final class OriginGateVelocity {
             alert(active, messages.alertDenied(), attempt, decision);
         } else if (decision.outcome() == Decision.Outcome.BYPASS) {
             if (!messages.bypassNotice().isEmpty()) {
-                bypassNotices.put(attempt.uuid(), render(messages.bypassNotice(), attempt, decision));
+                try {
+                    bypassNotices.put(attempt.uuid(), render(messages.bypassNotice(), attempt, decision));
+                } catch (RuntimeException ex) {
+                    // The player is let in either way; a broken notice must not cost the staff alert.
+                    logger.warn("Could not build the bypass notice: {}", Text.message(ex));
+                }
             }
             alert(active, messages.alertBypassed(), attempt, decision);
         }
