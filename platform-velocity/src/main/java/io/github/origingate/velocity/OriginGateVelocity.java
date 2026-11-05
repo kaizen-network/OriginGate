@@ -35,7 +35,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Plugin(id = "origingate", name = "OriginGate", version = OriginGateRuntime.VERSION,
-        description = "Checks where a connection comes from (VPN, proxy, country) before it joins")
+        description = "Checks where a connection comes from (VPN, proxy, country) before it joins",
+        authors = {"Kaizen Network"})
 public final class OriginGateVelocity {
     private static final int BSTATS_ID = 35142;
     private final ProxyServer proxy;

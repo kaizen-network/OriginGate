@@ -3,6 +3,7 @@ version: '${version}'
 main: io.github.origingate.bukkit.OriginGateBukkit
 api-version: '1.13'
 description: VPN, proxy, and country checks before joining
+author: Kaizen Network
 softdepend: [LuckPerms]
 commands:
   origingate:
