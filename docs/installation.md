@@ -11,7 +11,7 @@ order: 2
 | Platform | Requirement | JAR |
 | --- | --- | --- |
 | Bukkit / Spigot / Paper | Minecraft 1.7.2 or newer, Java 8 or newer (also meet your server's Java requirement) | `OriginGate-Bukkit-<version>.jar` |
-| BungeeCord | 1.21-R0.4 API or newer with asynchronous `PostLoginEvent`, Java 11 or newer | `OriginGate-BungeeCord-<version>.jar` |
+| BungeeCord / Waterfall | 1.21-R0.4 API or newer with asynchronous `PostLoginEvent`, Java 8 or newer (current BungeeCord and Waterfall builds need Java 17) | `OriginGate-BungeeCord-<version>.jar` |
 | Velocity | 3.4.0 or newer, Java 21 or newer | `OriginGate-Velocity-<version>.jar` |
 
 See [compatibility](compatibility.md) for tested builds and the reconnect requirement on old offline-mode CraftBukkit.

@@ -16,7 +16,8 @@ order: 10
 | Spigot 1.12.2, git-Spigot-642f6d2-6103339, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
 | Paper 1.12.2 build 1620, Java 8 | The same local login checks pass using the normal asynchronous login flow. |
 | Paper 1.21.7 build 32, Java 21 | Local login checks pass allow/deny before world entry, global permission bypass, dry-run, failure policies, reload, and timeout. |
-| BungeeCord build 2107, Java 21 | Local login checks pass; denied players never reach the test backend. Includes permission bypass, failure policies, dry-run, reload, and timeout. |
+| BungeeCord builds 2107 and 2111, Java 21 | Local login checks pass; denied players never reach the test backend. Includes permission bypass, failure policies, dry-run, reload, and timeout. |
+| Waterfall 1.21 build 615, Java 21 | The same local login checks as BungeeCord pass. |
 | Velocity 3.4.0 build 563, Java 25 | All automated login checks pass: allowed join, VPN and proxy kicks, bypass, country rules, deny-addresses, dry-run, lookup failures, reload, API key rotation, commands, and log files |
 | Velocity-CTD 4.2.1 with LuckPerms and ConsentGate 0.2.0, real proxycheck.io API | Real Java joins: allowed, VPN let in with a bypass permission, VPN kicked without it, lookup reused from storage |
 
@@ -35,6 +36,8 @@ MySQL and MariaDB storage has an automated test, but it has not yet been run aga
 ## Platforms
 
 Use the Bukkit JAR for Bukkit, Spigot, and Paper. It compiles against the Bukkit 1.7.2 API and targets Java 8. This does not mean every historical server build has been tested. Folia is not supported. BungeeCord needs the asynchronous `PostLoginEvent` available in API 1.21-R0.4 or newer; historical BungeeCord builds are not supported. On an older proxy, OriginGate logs an error at startup and does not check connections.
+
+Use the BungeeCord JAR for BungeeCord and Waterfall. It targets Java 8, so the proxy decides the Java version: BungeeCord build 2111 and Waterfall 1.21 build 615 need Java 17 or newer.
 
 On Bukkit, lookup work runs during asynchronous pre-login. UUID and permission bypasses are checked again at `PlayerLoginEvent`, so a lookup may already have happened before those bypasses are known. Configure permission plugins to supply permissions by that event. OriginGate preserves earlier plugin denials.
 

@@ -2,7 +2,7 @@
 
 ## Build
 
-Use JDK 25 to run the Gradle wrapper. Core, shared messages, Bukkit, and BungeeCord sources target Java 8 bytecode; Velocity targets Java 21. BungeeCord itself requires Java 11 or newer. Server smoke tests also need their corresponding Java runtimes.
+Use JDK 25 to run the Gradle wrapper. Core, shared messages, Bukkit, and BungeeCord sources target Java 8 bytecode; Velocity targets Java 21. Current BungeeCord and Waterfall builds require Java 17 or newer. Server smoke tests also need their corresponding Java runtimes.
 
 ```powershell
 .\gradlew.bat build

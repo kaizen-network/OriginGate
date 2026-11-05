@@ -17,7 +17,7 @@ Kick players who connect through a VPN or proxy, or from a country you do not al
 Each platform has its own file. Download the one for yours.
 
 - Bukkit, Spigot, or Paper: Minecraft 1.7.2 or newer, on Java 8 or newer. Folia is not supported.
-- BungeeCord: API 1.21-R0.4 or newer, on Java 11 or newer.
+- BungeeCord or Waterfall: API 1.21-R0.4 or newer, on Java 8 or newer. Current BungeeCord and Waterfall builds need Java 17 or newer.
 - Velocity 3.4.0 or newer, on Java 21 or newer.
 - A proxycheck.io API key is optional. Without one, proxycheck.io allows 100 lookups per day; a free account raises that to 1,000.
 
