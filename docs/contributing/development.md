@@ -42,7 +42,28 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 ## Releasing
 
 1. Update `version` in `gradle.properties`.
-2. Add a `## <version> (<date>)` section at the top of `CHANGELOG.md`. Modrinth and GitHub Releases use that section as the release notes.
+2. Add a `## <version> (<date>)` section at the top of `CHANGELOG.md`, or replace `(unreleased)` with the date. Modrinth, Hangar, and GitHub Releases use that section as the release notes.
 3. Run the unit tests and the [loopback probe](testing.md#loopback-probe).
 4. Commit and push, and wait for the GitHub Actions run on that commit to pass.
-5. Publish the three plugin JARs from that run, with the license and third-party notices.
+5. Publish a GitHub release with the three plugin JARs from that run, with the license and third-party notices.
+6. Publishing the release starts `modrinth.yml` and `hangar.yml`, which upload the JARs and copy `MODRINTH.md` to the project page. Check that both runs pass. To retry, run a workflow by hand with the release tag. Versions already uploaded are skipped.
+
+### Hangar
+
+`hangar.yml` runs `tools/publish_hangar.py`. It reads a Hangar API key from the `HANGAR_TOKEN` repository secret. The key needs the `create_version` and `edit_page` permissions.
+
+All three JARs go into one Hangar version. `tools/hangar.json` sets each JAR's platform and oldest supported version:
+
+| JAR | Hangar platform | From |
+| --- | --- | --- |
+| Bukkit | Paper | 1.8, the oldest version Hangar lists |
+| BungeeCord | Waterfall | 1.21 |
+| Velocity | Velocity | 3.4 |
+
+Versions with a `-` go to the `Snapshot` channel, others to `Release`. The API cannot create channels, so both must exist on the Hangar project.
+
+To check what would be sent without uploading, put the JARs in a folder and run:
+
+```powershell
+python tools/publish_hangar.py --tag v0.3.0 --dist path/to/jars --dry-run
+```
