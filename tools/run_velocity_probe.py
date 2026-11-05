@@ -566,8 +566,9 @@ def main():
     DATA.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(DATA / "logs", ignore_errors=True)
     # Keeps the test proxy out of bStats; OriginGate and Velocity both read this file.
+    # bStats rewrites a file without server-uuid with enabled=true, so both lines are needed.
     (PLUGINS / "bStats").mkdir(exist_ok=True)
-    (PLUGINS / "bStats" / "config.txt").write_text("enabled=false\n", encoding="utf-8")
+    (PLUGINS / "bStats" / "config.txt").write_text(f"enabled=false\nserver-uuid={uuid.uuid4()}\n", encoding="utf-8")
 
     stub = Stub()
     probe = Probe(stub, uuid.uuid4().hex)
