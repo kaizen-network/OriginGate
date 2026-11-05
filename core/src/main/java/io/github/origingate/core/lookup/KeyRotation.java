@@ -50,21 +50,26 @@ final class KeyRotation {
         int index = usable(Math.floorMod(next.getAndIncrement(), keys.size()));
         if (index < 0) throw new KeyRejectedException("all " + keys.size() + " API keys were refused in the last minute");
         KeyRejectedException last = null;
+        // Keys refused in this lookup. They are reported only once another key answers; when none does, the whole
+        // provider is paused and reported instead, so one event does not send two alerts.
+        Map<Integer, String> refusedNow = new java.util.LinkedHashMap<>();
         // Each refusal skips that key, so this sends at most one request per key.
         for (int tries = 0; tries < keys.size() && index >= 0; tries++) {
             try {
                 IpInfo info = request.send(keys.get(index));
                 if (reported.remove(index)) alerts.recovered(label + " accepts API key " + (index + 1) + " again.");
+                for (Map.Entry<Integer, String> refused : refusedNow.entrySet()) {
+                    if (reported.add(refused.getKey())) {
+                        alerts.problem(label + " refused API key " + (refused.getKey() + 1) + " (" + refused.getValue()
+                                + "). The other keys are used until it is accepted again.");
+                    }
+                }
                 return info;
             } catch (KeyRejectedException ex) {
                 refuse(index);
                 last = ex;
+                refusedNow.put(index, ex.getMessage());
                 int following = usable((index + 1) % keys.size());
-                // With no other key left the whole provider is paused and reported, so this key is not reported too.
-                if (following >= 0 && reported.add(index)) {
-                    alerts.problem(label + " refused API key " + (index + 1) + " (" + ex.getMessage()
-                            + "). The other keys are used until it is accepted again.");
-                }
                 if (following >= 0 && !clock.instant().isBefore(deadline)) {
                     log.warn(label + " refused API key " + (index + 1) + " (" + ex.getMessage() + "), no time left to try key "
                             + (following + 1), null);

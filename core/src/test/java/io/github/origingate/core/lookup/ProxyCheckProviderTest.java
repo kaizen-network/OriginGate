@@ -200,13 +200,15 @@ class ProxyCheckProviderTest {
         assertEquals(List.of(), provider.keyStatus(clock.instant()));
     }
 
-    @Test void lastRefusedKeyIsLeftToTheProviderAlert() throws Exception {
+    @Test void keysRefusedTogetherAreLeftToTheProviderAlert() throws Exception {
         keyStatus.put("key-one", 429);
-        ProxyCheckProvider provider = provider(List.of("key-one"), 3000);
+        keyStatus.put("key-two", 429);
+        ProxyCheckProvider provider = provider(List.of("key-one", "key-two"), 3000);
         TestSupport.RecordingAlerts alerts = new TestSupport.RecordingAlerts();
         provider.alertTo(alerts);
         assertThrows(KeyRejectedException.class, () -> provider.lookup("8.8.8.8", TestSupport.NO_DEADLINE));
-        assertTrue(alerts.problems.isEmpty(), "the chain reports the paused provider instead");
+        assertTrue(alerts.problems.isEmpty(), "the chain reports the paused provider instead: " + alerts.problems);
+        assertEquals(2, provider.keyStatus(TestSupport.NOW).size());
     }
 
     @Test void allKeysRefusedIsAKeyRejection() throws Exception {
