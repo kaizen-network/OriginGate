@@ -64,7 +64,12 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getScheduler().runTaskTimerAsynchronously(this, controller::cleanup, 1200, 72000);
         getServer().getScheduler().runTaskTimerAsynchronously(this, () -> { pending.expire(); deferred.expire(); expireNotices(); }, 1200, 1200);
-        metrics = new Metrics(this, BSTATS_ID);
+        try {
+            metrics = new Metrics(this, BSTATS_ID);
+        } catch (RuntimeException | LinkageError ex) {
+            // Paper disables a plugin whose onEnable throws, which would stop the login checks.
+            getLogger().warning("Could not start bStats: " + Text.message(ex));
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
