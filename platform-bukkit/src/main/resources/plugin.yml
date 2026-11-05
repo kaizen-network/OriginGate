@@ -8,9 +8,11 @@ softdepend: [LuckPerms]
 commands:
   origingate:
     description: Inspect connections and manage OriginGate
-    usage: /origingate <check|reload|cache>
+    usage: /origingate <check|status|reload|cache>
 permissions:
   origingate.command.check:
+    default: op
+  origingate.command.status:
     default: op
   origingate.command.reload:
     default: op
@@ -19,6 +21,10 @@ permissions:
   origingate.bypass.vpn:
     default: false
   origingate.bypass.proxy:
+    default: false
+  origingate.bypass.hosting:
+    default: false
+  origingate.bypass.deny-networks:
     default: false
   origingate.bypass.country:
     default: false

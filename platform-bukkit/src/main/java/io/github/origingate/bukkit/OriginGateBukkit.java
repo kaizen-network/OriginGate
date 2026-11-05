@@ -16,6 +16,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -42,7 +43,8 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     @Override public void onEnable() {
         stopping = false;
         hexColors = ServerVersion.hexColors(getServer().getBukkitVersion());
-        controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()));
+        controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()),
+                () -> IdentityMode.of(getServer()), this::staffAlert);
         controller.reload();
         commands = new Commands(new Commands.Platform() {
             @Override public OriginGateRuntime runtime() { return controller.runtime(); }
@@ -87,8 +89,9 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         LoginAttempt initial = new LoginAttempt(event.getName(), null, event.getAddress(), permission -> false);
         try {
             if (!active.gate().beforeLookup(initial).isPresent()) {
-                flight.result = active.gate().lookups().lookup(Addresses.text(event.getAddress()), false)
-                        .get(active.config().lookup().waitMillis(), TimeUnit.MILLISECONDS);
+                long wait = active.config().lookup().waitMillis();
+                flight.result = active.gate().lookups().lookup(Addresses.text(event.getAddress()), false, Duration.ofMillis(wait))
+                        .get(wait, TimeUnit.MILLISECONDS);
             }
         } catch (Exception ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -157,7 +160,8 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         String ip = Addresses.text(attempt.address());
         if (preLoginSeen) {
             // The prefetched result was dropped (every slot was in use), so only a cached answer avoids on-lookup-failure.
-            CompletableFuture<LookupService.Result> lookup = active.gate().lookups().lookup(ip, false);
+            // Nobody waits for it, so a lookup that is not answered from memory right away is dropped before any provider is asked.
+            CompletableFuture<LookupService.Result> lookup = active.gate().lookups().lookup(ip, false, Duration.ZERO);
             if (!lookup.isDone()) return active.gate().finish(attempt, null, new IllegalStateException("too many connections were being checked"));
             return finished(active, attempt, lookup);
         }
@@ -217,7 +221,18 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
         String message = render(template, attempt, decision, null);
-        if (message == null) return;
+        if (message != null) sendToStaff(active, message);
+    }
+    /** Lookup alerts come from worker threads, so they are sent on the main thread. */
+    private void staffAlert(OriginGateRuntime active, String template, String text) {
+        if (stopping || template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
+        String message;
+        try { message = MessagesRenderer.legacy(MessagesRenderer.renderAlert(template, text), hexColors); }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return; }
+        try { getServer().getScheduler().runTask(this, () -> sendToStaff(active, message)); }
+        catch (RuntimeException ex) { getLogger().warning("Could not send an OriginGate alert: " + Text.message(ex)); }
+    }
+    private void sendToStaff(OriginGateRuntime active, String message) {
         for (Player player : players()) {
             for (String permission : active.config().alertPermissions()) {
                 if (player.hasPermission(permission)) { player.sendMessage(message); break; }
@@ -237,7 +252,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     }
     private Commands.Sender sender(CommandSender sender) {
         Set<String> permissions = new HashSet<>();
-        for (String node : Arrays.asList(Commands.CHECK, Commands.RELOAD, Commands.CACHE))
+        for (String node : Commands.PERMISSIONS)
             if (sender.hasPermission(node)) permissions.add(node);
         return new Commands.Sender() {
             @Override public boolean hasPermission(String permission) { return permissions.contains(permission); }

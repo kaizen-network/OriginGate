@@ -35,7 +35,10 @@ public final class OriginGateBungee extends Plugin implements Listener {
             getLogger().severe("OriginGate needs BungeeCord 1.21-R0.4 or newer (asynchronous PostLoginEvent) and is NOT checking connections.");
             return;
         }
-        controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()));
+        // The proxy faces the players, so its own online mode decides; ip_forward only concerns the backends.
+        controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()),
+                () -> getProxy().getConfig().isOnlineMode() ? OfflineModeWarning.Mode.ONLINE : OfflineModeWarning.Mode.OFFLINE,
+                this::staffAlert);
         controller.reload();
         commands = new Commands(new Commands.Platform() {
             @Override public OriginGateRuntime runtime() { return controller.runtime(); }
@@ -160,7 +163,17 @@ public final class OriginGateBungee extends Plugin implements Listener {
     private void alert(OriginGateRuntime active, String template, LoginAttempt attempt, Decision decision) {
         if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
         Component message = render(template, attempt, decision);
-        if (message == null) return;
+        if (message != null) sendToStaff(active, message);
+    }
+    /** Lookup alerts come from worker threads; BungeeCord's sendMessage is safe from any thread. */
+    private void staffAlert(OriginGateRuntime active, String template, String text) {
+        if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
+        Component message;
+        try { message = MessagesRenderer.renderAlert(template, text); }
+        catch (RuntimeException ex) { getLogger().warning("Could not render OriginGate message: " + Text.message(ex)); return; }
+        sendToStaff(active, message);
+    }
+    private void sendToStaff(OriginGateRuntime active, Component message) {
         for (ProxiedPlayer player : getProxy().getPlayers()) {
             for (String permission : active.config().alertPermissions()) {
                 if (player.hasPermission(permission)) { player.sendMessage(legacy(message, player)); break; }

@@ -15,6 +15,8 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import io.github.origingate.core.Commands;
 import io.github.origingate.core.Log;
+import io.github.origingate.core.OfflineModeWarning;
+import io.github.origingate.presentation.MessagesRenderer;
 import io.github.origingate.core.Text;
 import io.github.origingate.core.OriginGateRuntime;
 import io.github.origingate.core.RuntimeController;
@@ -62,7 +64,21 @@ public final class OriginGateVelocity {
                 else logger.error(message, cause);
             }
             @Override public void debug(String message) { logger.info(message); }
-        });
+        }, () -> proxy.getConfiguration().isOnlineMode() ? OfflineModeWarning.Mode.ONLINE : OfflineModeWarning.Mode.OFFLINE,
+                this::staffAlert);
+    }
+
+    /** Lookup alerts come from worker threads; Velocity's sendMessage is safe from any thread. */
+    private void staffAlert(OriginGateRuntime active, String template, String message) {
+        if (template.isEmpty() || active.config().alertPermissions().isEmpty()) return;
+        Component text;
+        try {
+            text = MessagesRenderer.renderAlert(template, message);
+        } catch (RuntimeException ex) {
+            logger.warn("Could not build the staff alert: {}", Text.message(ex));
+            return;
+        }
+        sendToStaff(active, text);
     }
 
     @Subscribe public void initialize(ProxyInitializeEvent event) {
@@ -136,6 +152,10 @@ public final class OriginGateVelocity {
             logger.warn("Could not build the staff alert: {}", Text.message(ex));
             return;
         }
+        sendToStaff(active, message);
+    }
+
+    private void sendToStaff(OriginGateRuntime active, Component message) {
         for (Player player : proxy.getAllPlayers()) {
             for (String permission : active.config().alertPermissions()) {
                 if (player.hasPermission(permission)) {

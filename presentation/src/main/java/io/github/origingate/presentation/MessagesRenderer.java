@@ -18,6 +18,10 @@ public final class MessagesRenderer {
     public static String legacy(Component message, boolean hexColors) {
         return (hexColors ? HEX : LegacyComponentSerializer.legacySection()).serialize(message);
     }
+    /** A lookup alert: {@code message} fills the {@code <message>} placeholder as plain text. */
+    public static Component renderAlert(String template, String message) {
+        return MiniMessage.miniMessage().deserialize(template, Placeholder.unparsed("message", message));
+    }
     public static Component render(String template, LoginAttempt attempt, Decision decision) {
         IpInfo info = decision.lookup() == null ? null : decision.lookup().info();
         TagResolver placeholders = TagResolver.resolver(
