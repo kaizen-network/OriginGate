@@ -30,6 +30,8 @@ See [compatibility](https://kaizenmc.id/software/origingate/compatibility) for t
 3. Run `origingate reload`.
 4. Watch the `WOULD-DENY` lines for a few days, then set `dry-run: false`.
 
+OriginGate sends anonymous usage statistics to bStats, with no player names or IP addresses. See [what is sent and how to turn it off](https://kaizenmc.id/software/origingate/storage-and-privacy#bstats).
+
 ## Links
 
 - [Documentation](https://kaizenmc.id/software/origingate)
