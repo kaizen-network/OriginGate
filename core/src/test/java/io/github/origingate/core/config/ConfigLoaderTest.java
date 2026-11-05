@@ -51,6 +51,14 @@ class ConfigLoaderTest {
         OriginGateConfig config = TestSupport.config(directory);
         assertEquals(2500, config.lookup().waitMillis());
         assertEquals(0, config.lookup().maxLookupsPerMinute());
+        assertEquals(OriginGateConfig.FailureMode.ALLOW, config.lookup().onBudgetExceeded());
+        assertEquals(OriginGateConfig.FailureMode.DENY,
+                TestSupport.config(directory, "lookup.on-lookup-failure", "deny").lookup().onBudgetExceeded(),
+                "without the setting, over the budget follows on-lookup-failure");
+        assertEquals(OriginGateConfig.FailureMode.DENY,
+                TestSupport.config(directory, "lookup.on-budget-exceeded", "deny").lookup().onBudgetExceeded());
+        assertEquals(OriginGateConfig.FailureMode.ALLOW, TestSupport.config(directory, "lookup.on-lookup-failure", "deny",
+                "lookup.on-budget-exceeded", "allow").lookup().onBudgetExceeded());
         assertFalse(config.rules().hosting().enabled());
         assertEquals(List.of("origingate.bypass.hosting"), config.rules().hosting().bypassPermissions());
         assertFalse(config.rules().denyNetworks().enabled());

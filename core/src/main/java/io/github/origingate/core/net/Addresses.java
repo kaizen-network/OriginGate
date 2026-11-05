@@ -40,19 +40,18 @@ public final class Addresses {
     }
 
     /**
-     * The key one lookup is shared under: the address itself for IPv4, and its /64 network for IPv6, written like
-     * {@code 2001:db8:0:0:0:0:0:0/64}. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it.
-     * Text that is not an IP literal is returned unchanged.
+     * The /64 network of an IPv6 address, written like {@code 2001:db8:0:0:0:0:0:0/64}, or null for IPv4 and for text
+     * that is not an IP literal. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it.
      */
-    public static String lookupKey(String ip) {
+    public static String sharedNetwork(String ip) {
         Optional<InetAddress> parsed = parse(ip);
-        if (!parsed.isPresent() || !(parsed.get() instanceof Inet6Address)) return ip;
+        if (!parsed.isPresent() || !(parsed.get() instanceof Inet6Address)) return null;
         byte[] bytes = parsed.get().getAddress();
         for (int i = 8; i < bytes.length; i++) bytes[i] = 0;
         try {
             return text(InetAddress.getByAddress(bytes)) + "/64";
         } catch (UnknownHostException ex) {
-            return ip;
+            return null;
         }
     }
 

@@ -116,7 +116,9 @@ public final class OriginGateRuntime implements AutoCloseable {
         Providers providers = Providers.start(config.lookup(), http, clock, log, "OriginGate/" + VERSION, whileCurrent, stats);
         LookupService lookups = new LookupService(providers.chain(), storage,
                 new MemoryCache(settings.memoryCacheSize(), maxAge, clock), maxAge, workers, clock, log,
-                config.lookup().maxLookupsPerMinute(), stats, whileCurrent);
+                config.lookup().maxLookupsPerMinute(), stats, whileCurrent,
+                // Only answers that a rule acts on are kept for a whole IPv6 /64; clean answers stay per address.
+                info -> Gate.match(config.rules(), info).isPresent());
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log),
                 decisionFile, clock, stats, current);
@@ -204,6 +206,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         lines.add("Providers (" + providers.chain().describe() + "):");
         for (String line : providers.chain().status()) lines.add("  " + line);
         lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)
+                + ", over the budget: " + config.lookup().onBudgetExceeded().name().toLowerCase(java.util.Locale.ROOT)
                 + (config.dryRun() ? ", dry run is on" : ""));
         return lines;
     }

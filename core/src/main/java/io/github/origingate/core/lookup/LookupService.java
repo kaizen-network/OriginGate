@@ -20,13 +20,16 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 
 /**
- * Finds IP data in this order: memory, storage, providers. Only one lookup per key runs at a time; other callers share
- * its result. The key is the address for IPv4 and its /64 network for IPv6, so one lookup covers a whole /64 in memory;
- * storage keeps one row per address. A queued lookup whose callers have all stopped waiting is dropped before any
- * provider is asked. Storage errors are logged and skipped, never fatal, and after one, storage is left alone for
- * {@link #STORAGE_PAUSE} so a dead database does not slow logins.
+ * Finds IP data in this order: memory, storage, providers. Only one lookup per address runs at a time; other callers
+ * share its result. Answers are kept per address. An IPv6 answer that a rule would act on (see {@code sharedAcrossNetwork})
+ * is also kept for its whole /64, so the next address in that /64 gets it from memory: home and mobile users can switch
+ * addresses inside their /64, but hosts may split one /64 between customers, so a clean answer is never shared.
+ * A queued lookup whose callers have all stopped waiting is dropped before any provider is asked. Storage errors are
+ * logged and skipped, never fatal, and after one, storage is left alone for {@link #STORAGE_PAUSE} so a dead database
+ * does not slow logins.
  */
 public final class LookupService {
     public static final Duration STORAGE_PAUSE = Duration.ofSeconds(60);
@@ -51,11 +54,6 @@ public final class LookupService {
         public Source source() { return source; }
         public AnsweredBy answeredBy() { return answeredBy; }
 
-        /** This result for {@code ip}, which may be another address in the same IPv6 /64. */
-        Result forIp(String ip) {
-            return info.ip().equals(ip) ? this : new Result(info.withIp(ip), source, answeredBy);
-        }
-
         @Override public boolean equals(Object other) {
             if (this == other) return true;
             if (!(other instanceof Result)) return false;
@@ -70,9 +68,14 @@ public final class LookupService {
         public Result(IpInfo info, Source source) { this(info, source, null); }
     }
 
-    /** A lookup that was skipped on purpose: dropped after its callers stopped waiting, or over the budget. */
-    static final class SkippedException extends LookupException {
+    /** A lookup that was skipped on purpose and not counted as failed: dropped after its callers stopped waiting. */
+    public static class SkippedException extends LookupException {
         SkippedException(String message) { super(message); }
+    }
+
+    /** A login lookup over {@code max-lookups-per-minute}. It follows {@code on-budget-exceeded}. */
+    public static final class BudgetExceededException extends SkippedException {
+        BudgetExceededException(String message) { super(message); }
     }
 
     /** A queued or running lookup, shared by every caller for the same key. */
@@ -113,10 +116,14 @@ public final class LookupService {
     private final LookupBudget budget;
     private final LookupStats stats;
     private final Alerts alerts;
+    private final Predicate<IpInfo> sharedAcrossNetwork;
     private final AtomicBoolean budgetUsedUp = new AtomicBoolean();
     private final AtomicLong skippedByBudget = new AtomicLong();
     private final Map<String, Flight> inFlight = new ConcurrentHashMap<>();
-    /** Keys whose last provider answer had no country, with the time they may be asked again. */
+    /**
+     * Addresses whose last provider answer had no country, with the time they may be asked again. Kept per address:
+     * a paused lookup fails, and with on-lookup-failure: allow a pause for a whole /64 would let its neighbours in unchecked.
+     */
     private final Map<String, Instant> noCountry = new LinkedHashMap<String, Instant>(16, 0.75f, false) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Instant> eldest) {
             return size() > MAX_NO_COUNTRY;
@@ -127,13 +134,16 @@ public final class LookupService {
     public LookupService(ProviderChain providers, IpStorage storage, MemoryCache cache, Duration maxAge,
                          Executor executor, Clock clock, Log log) {
         this(providers, storage, cache, maxAge, executor, clock, log, 0, new LookupStats(clock, ZoneId.systemDefault()),
-                Alerts.NONE);
+                Alerts.NONE, info -> false);
     }
 
-    /** {@code maxLookupsPerMinute} limits provider lookups; 0 means no limit. */
+    /**
+     * {@code maxLookupsPerMinute} limits provider lookups; 0 means no limit. {@code sharedAcrossNetwork} tells which
+     * IPv6 answers are also kept for their whole /64: those a rule would act on.
+     */
     public LookupService(ProviderChain providers, IpStorage storage, MemoryCache cache, Duration maxAge,
                          Executor executor, Clock clock, Log log, int maxLookupsPerMinute, LookupStats stats,
-                         Alerts alerts) {
+                         Alerts alerts, Predicate<IpInfo> sharedAcrossNetwork) {
         this.providers = providers;
         this.storage = storage;
         this.cache = cache;
@@ -144,6 +154,7 @@ public final class LookupService {
         this.budget = new LookupBudget(maxLookupsPerMinute);
         this.stats = stats;
         this.alerts = alerts;
+        this.sharedAcrossNetwork = sharedAcrossNetwork;
     }
 
     /** Looks up {@code ip} for a caller that waits without a time limit, such as a command. */
@@ -157,9 +168,8 @@ public final class LookupService {
      * exceptionally with a {@link LookupException} on failure.
      */
     public CompletableFuture<Result> lookup(String ip, boolean refresh, Duration wait) {
-        String key = Addresses.lookupKey(ip);
         if (!refresh) {
-            Optional<IpInfo> cached = cache.get(key);
+            Optional<IpInfo> cached = remembered(ip);
             if (cached.isPresent()) {
                 stats.answered(Source.MEMORY);
                 return CompletableFuture.completedFuture(new Result(cached.get().withIp(ip), Source.MEMORY));
@@ -167,28 +177,36 @@ public final class LookupService {
         }
         Instant deadline = wait == null ? null : clock.instant().plus(wait);
         // A refresh never joins a normal lookup, which may answer from storage.
-        String flightKey = refresh ? "refresh " + key : key;
+        String flightKey = refresh ? "refresh " + ip : ip;
         while (true) {
             Flight existing = inFlight.get(flightKey);
             if (existing != null) {
                 if (existing.join(deadline)) {
-                    log.debug("Lookup for " + key + " is already running, waiting for it");
-                    return existing.future.thenApply(result -> result.forIp(ip));
+                    log.debug("Lookup for " + ip + " is already running, waiting for it");
+                    return io.github.origingate.core.util.Futures.copy(existing.future);
                 }
                 inFlight.remove(flightKey, existing);
                 continue;
             }
             Flight created = new Flight(deadline);
             if (inFlight.putIfAbsent(flightKey, created) != null) continue;
-            start(created, flightKey, key, ip, refresh);
+            start(created, flightKey, ip, refresh);
             // A copy, so a caller's own timeout never cancels the shared lookup.
-            return created.future.thenApply(result -> result.forIp(ip));
+            return io.github.origingate.core.util.Futures.copy(created.future);
         }
     }
 
-    private void start(Flight flight, String flightKey, String key, String ip, boolean refresh) {
+    /** The answer for this address, or else one a rule acts on for its IPv6 /64. */
+    private Optional<IpInfo> remembered(String ip) {
+        Optional<IpInfo> exact = cache.get(ip);
+        if (exact.isPresent()) return exact;
+        String network = Addresses.sharedNetwork(ip);
+        return network == null ? Optional.empty() : cache.get(network);
+    }
+
+    private void start(Flight flight, String flightKey, String ip, boolean refresh) {
         try {
-            executor.execute(() -> run(flight, flightKey, key, ip, refresh));
+            executor.execute(() -> run(flight, flightKey, ip, refresh));
         } catch (RejectedExecutionException ex) {
             inFlight.remove(flightKey, flight);
             stats.countFailed();
@@ -196,7 +214,7 @@ public final class LookupService {
         }
     }
 
-    private void run(Flight flight, String flightKey, String key, String ip, boolean refresh) {
+    private void run(Flight flight, String flightKey, String ip, boolean refresh) {
         Result result = null;
         Throwable failure = null;
         if (flight.dropIfExpired(clock.instant())) {
@@ -205,7 +223,7 @@ public final class LookupService {
             failure = new SkippedException("dropped: no login was waiting for it any more");
         } else {
             try {
-                result = load(key, ip, refresh);
+                result = load(ip, refresh);
             } catch (Throwable ex) {
                 failure = ex;
                 if (!(ex instanceof SkippedException)) stats.countFailed();
@@ -224,17 +242,20 @@ public final class LookupService {
         if (result != null && result.source() == Source.PROVIDER && providers.checksVpn()) save(result.info());
     }
 
-    private Result load(String key, String ip, boolean refresh) throws LookupException {
+    private Result load(String ip, boolean refresh) throws LookupException {
         Instant now = clock.instant();
         if (!refresh) {
+            // A neighbour's answer that a rule acts on may have arrived while this lookup was queued.
+            Optional<IpInfo> cached = remembered(ip);
+            if (cached.isPresent()) return new Result(cached.get().withIp(ip), Source.MEMORY);
             Optional<IpInfo> stored = read(ip, now.minus(maxAge));
-            if (stored.isPresent()) return remember(key, stored.get(), Source.STORAGE, null);
+            if (stored.isPresent()) return remember(stored.get(), Source.STORAGE, null);
             Instant retryAt;
             synchronized (noCountry) {
-                retryAt = noCountry.get(key);
+                retryAt = noCountry.get(ip);
             }
             if (retryAt != null && now.isBefore(retryAt)) {
-                throw new LookupException("No provider had a country for " + key + " a moment ago; not asking again yet");
+                throw new LookupException("No provider had a country for " + ip + " a moment ago; not asking again yet");
             }
             takeBudget(now);
         }
@@ -245,17 +266,17 @@ public final class LookupService {
         } catch (ProviderChain.NoCountryException ex) {
             // Country rules cannot work without a country code, so this counts as a failed lookup and is not saved.
             synchronized (noCountry) {
-                noCountry.put(key, now.plus(NO_COUNTRY_PAUSE));
+                noCountry.put(ip, now.plus(NO_COUNTRY_PAUSE));
             }
             throw ex;
         }
         synchronized (noCountry) {
-            noCountry.remove(key);
+            noCountry.remove(ip);
         }
-        return remember(key, answer.info(), Source.PROVIDER, answer.answeredBy());
+        return remember(answer.info(), Source.PROVIDER, answer.answeredBy());
     }
 
-    /** A refresh from a command is not limited; logins over the budget fail and follow on-lookup-failure. */
+    /** A refresh from a command is not limited; logins over the budget fail and follow on-budget-exceeded. */
     private void takeBudget(Instant now) throws SkippedException {
         if (budget.take(now)) {
             if (budgetUsedUp.compareAndSet(true, false)) {
@@ -270,7 +291,7 @@ public final class LookupService {
             alerts.problem("The lookup budget of " + budget.perMinute() + " lookups per minute is used up. New addresses "
                     + "follow on-lookup-failure until it has room again.");
         }
-        throw new SkippedException("the lookup budget of " + budget.perMinute() + " per minute is used up");
+        throw new BudgetExceededException("the lookup budget of " + budget.perMinute() + " per minute is used up");
     }
 
     private Optional<IpInfo> read(String ip, Instant notBefore) {
@@ -302,19 +323,22 @@ public final class LookupService {
                 + STORAGE_PAUSE.getSeconds() + " seconds: " + Text.message(ex), null);
     }
 
-    private Result remember(String key, IpInfo info, Source source, AnsweredBy answeredBy) {
-        cache.put(key, info);
+    private Result remember(IpInfo info, Source source, AnsweredBy answeredBy) {
+        cache.put(info.ip(), info);
+        String network = Addresses.sharedNetwork(info.ip());
+        if (network != null && sharedAcrossNetwork.test(info)) cache.put(network, info);
         log.debug("Found " + info.ip() + " in " + source.name().toLowerCase(java.util.Locale.ROOT));
         return new Result(info, source, answeredBy);
     }
 
-    /** Forgets one IP in memory (for IPv6, its whole /64). Returns true when it was cached. */
+    /** Forgets one IP in memory, and for IPv6 any answer kept for its /64. Returns true when something was cached. */
     public boolean forget(String ip) {
-        String key = Addresses.lookupKey(ip);
         synchronized (noCountry) {
-            noCountry.remove(key);
+            noCountry.remove(ip);
         }
-        return cache.remove(key);
+        String network = Addresses.sharedNetwork(ip);
+        boolean exact = cache.remove(ip);
+        return (network != null && cache.remove(network)) || exact;
     }
 
     /** Forgets every IP in memory. Returns how many were cached. */

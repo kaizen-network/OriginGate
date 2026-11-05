@@ -120,6 +120,61 @@ class GateTest {
         assertEquals(Outcome.DENY, decision.outcome());
     }
 
+    /** A gate whose lookups use the config's budget, as the runtime builds it. */
+    private Gate gateWithBudget(Object... changes) throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, changes);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(),
+                new MemoryCache(100, Duration.ofDays(30), clock), Duration.ofDays(30), workers, clock, Log.NONE,
+                config.lookup().maxLookupsPerMinute(), new io.github.origingate.core.lookup.LookupStats(clock, java.time.ZoneOffset.UTC),
+                io.github.origingate.core.Alerts.NONE, info -> Gate.match(config.rules(), info).isPresent());
+        return new Gate(config, lookups, Log.NONE);
+    }
+
+    @Test void overBudgetFollowsOnLookupFailureUnlessOnBudgetExceededIsSet() throws Exception {
+        Gate inherits = gateWithBudget("lookup.max-lookups-per-minute", 1);
+        assertEquals(Outcome.ALLOW, run(inherits, player("Alex", HOME_IP)).outcome());
+        Decision over = run(inherits, player("Steve", PROXY_IP));
+        assertEquals(Rule.LOOKUP_FAILURE, over.rule());
+        assertEquals(Outcome.ALLOW, over.outcome(), "an upgraded config sees no new kicks");
+        assertTrue(over.note().contains("budget"), over.note());
+
+        Gate denyAll = gateWithBudget("lookup.max-lookups-per-minute", 1, "lookup.on-lookup-failure", "deny");
+        run(denyAll, player("Alex", HOME_IP));
+        assertEquals(Outcome.DENY, run(denyAll, player("Steve", PROXY_IP)).outcome());
+
+        Gate attackMode = gateWithBudget("lookup.max-lookups-per-minute", 1, "lookup.on-budget-exceeded", "deny");
+        assertEquals(Outcome.ALLOW, run(attackMode, player("Alex", HOME_IP)).outcome());
+        assertEquals(Outcome.ALLOW, run(attackMode, player("Alex", HOME_IP)).outcome(), "players seen before come from memory");
+        Decision refused = run(attackMode, player("Steve", PROXY_IP));
+        assertEquals(Rule.LOOKUP_FAILURE, refused.rule());
+        assertEquals(Outcome.DENY, refused.outcome());
+
+        provider.fail("192.0.2.99", new LookupException("provider down"));
+        Gate otherFailures = gateWithBudget("lookup.max-lookups-per-minute", 5, "lookup.on-budget-exceeded", "deny");
+        assertEquals(Outcome.ALLOW, run(otherFailures, player("Alex", "192.0.2.99")).outcome(),
+                "other failures still follow on-lookup-failure");
+    }
+
+    @Test void onlyAnswersARuleActsOnAreSharedAcrossTheSlash64() throws Exception {
+        String first = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:5:6::1"));
+        String neighbour = io.github.origingate.core.net.Addresses.text(java.net.InetAddress.getByName("2001:db8:5:6::2"));
+        provider.answer(new IpInfo(first, "Example Cloud", "Example Cloud Ltd", null, null, null, "Canada", "CA", "AS64496",
+                false, false, IpInfo.HOSTING, TestSupport.NOW));
+        Gate hostingOff = gateWithBudget();
+        assertEquals(Outcome.ALLOW, run(hostingOff, player("Alex", first)).outcome());
+        assertEquals(Outcome.ALLOW, run(hostingOff, player("Steve", neighbour)).outcome(), "looked up on its own and failed open");
+        assertEquals(Rule.LOOKUP_FAILURE, run(hostingOff, player("Steve", neighbour)).rule(), "the clean answer was not shared");
+
+        Gate hostingOn = gateWithBudget("rules.hosting.enabled", true);
+        int calls = provider.calls.get();
+        assertEquals(Rule.HOSTING, run(hostingOn, player("Alex", first)).rule());
+        Decision shared = run(hostingOn, player("Steve", neighbour));
+        assertEquals(Rule.HOSTING, shared.rule());
+        assertEquals(Outcome.DENY, shared.outcome());
+        assertEquals(calls + 1, provider.calls.get(), "the neighbour was kicked from memory without a lookup");
+    }
+
     private static final String HOSTING_IP = "198.51.100.40";
 
     private FakeProvider withHosting() {

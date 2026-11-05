@@ -60,8 +60,8 @@ public final class ConfigLoader {
     }
 
     private static Lookup lookup(Path root, YamlSection lookup) throws ConfigException {
-        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "max-lookups-per-minute", "country-from",
-                "vpn-from", "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
+        lookup.allowOnly("skip-private-addresses", "on-lookup-failure", "wait-millis", "max-lookups-per-minute",
+                "on-budget-exceeded", "country-from", "vpn-from", "proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
         // Configs from before the provider lists used proxycheck for everything.
         List<String> countryFrom = lookup.has("country-from") ? providers(lookup, "country-from") : io.github.origingate.core.util.Compat.list("proxycheck");
         List<String> vpnFrom = lookup.has("vpn-from") ? providers(lookup, "vpn-from") : io.github.origingate.core.util.Compat.list("proxycheck");
@@ -84,10 +84,12 @@ public final class ConfigLoader {
         if (listed.contains("ipinfo") && ipinfo.token().isEmpty()) {
             throw new ConfigException(lookup.key("ipinfo.token") + " must be set to use IPinfo");
         }
-        return new Lookup(lookup.bool("skip-private-addresses"), lookup.choice("on-lookup-failure", FailureMode.class),
+        FailureMode onFailure = lookup.choice("on-lookup-failure", FailureMode.class);
+        return new Lookup(lookup.bool("skip-private-addresses"), onFailure,
                 lookup.integer("wait-millis", 1000, 20000), countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind,
                 // Added in 1.1.0. A config from before has no limit, as before.
-                lookup.has("max-lookups-per-minute") ? lookup.integer("max-lookups-per-minute", 0, 100_000) : 0);
+                lookup.has("max-lookups-per-minute") ? lookup.integer("max-lookups-per-minute", 0, 100_000) : 0,
+                lookup.has("on-budget-exceeded") ? lookup.choice("on-budget-exceeded", FailureMode.class) : onFailure);
     }
 
     /** A provider block is read when present (so typos are caught) or when a list names the provider. */

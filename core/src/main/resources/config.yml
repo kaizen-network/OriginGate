@@ -24,8 +24,11 @@ lookup:
   # Longest time a login waits for the lookup, in milliseconds (1000-20000).
   wait-millis: 2500
   # Most lookups sent to providers in any 60 seconds (0-100000), so a wave of bots cannot use up a provider's
-  # daily quota. Logins over it are not looked up and follow on-lookup-failure. 0 means no limit.
+  # daily quota. Logins over it are not looked up. 0 means no limit.
   max-lookups-per-minute: 0
+  # What to do with a login over that limit: allow or deny. Without this setting, on-lookup-failure decides.
+  # deny turns away new, unchecked addresses during a flood; players seen before are still answered from the cache.
+  # on-budget-exceeded: deny
   # Providers asked for the country, in order. When one fails, the next one is asked.
   # Any of: proxycheck, iphub, ip-api, ipinfo, maxmind.
   country-from: [proxycheck]

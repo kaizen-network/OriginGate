@@ -24,11 +24,13 @@ import java.util.concurrent.TimeUnit;
 
 import static io.github.origingate.core.TestSupport.info;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** IPv6 /64 sharing, dropping lookups nobody waits for, and the lookups-per-minute budget. */
+/** IPv6 /64 sharing of flagged answers, dropping lookups nobody waits for, and the lookups-per-minute budget. */
 class LookupLimitsTest {
     /** Two addresses in 2001:db8:1:2::/64 and one outside it, in the canonical form the platforms pass in. */
     private static final String FIRST = text("2001:db8:1:2::10");
@@ -50,11 +52,12 @@ class LookupLimitsTest {
         return Addresses.text(Addresses.parse(ip).orElseThrow());
     }
 
+    /** The rule stand-in: answers flagged as VPN are the ones a rule acts on. */
     private LookupService service(int perMinute) {
         ProviderChain chain = new ProviderChain(List.of(provider), List.of(provider), Duration.ofSeconds(20), clock, Log.NONE,
                 alerts, stats);
         return new LookupService(chain, storage, new MemoryCache(100, Duration.ofDays(30), clock),
-                Duration.ofDays(30), workers, clock, Log.NONE, perMinute, stats, alerts);
+                Duration.ofDays(30), workers, clock, Log.NONE, perMinute, stats, alerts, IpInfo::vpn);
     }
 
     private static Result get(CompletableFuture<Result> future) throws Exception {
@@ -65,51 +68,72 @@ class LookupLimitsTest {
         return assertThrows(ExecutionException.class, () -> future.get(10, TimeUnit.SECONDS)).getCause();
     }
 
-    @Test void ipv6KeyIsTheSlash64AndIpv4KeyIsTheAddress() {
-        assertEquals("2001:db8:1:2:0:0:0:0/64", Addresses.lookupKey(FIRST));
-        assertEquals(Addresses.lookupKey(FIRST), Addresses.lookupKey(SECOND));
-        assertEquals("192.0.2.10", Addresses.lookupKey("192.0.2.10"));
+    @Test void sharedNetworkIsTheSlash64ForIpv6Only() {
+        assertEquals("2001:db8:1:2:0:0:0:0/64", Addresses.sharedNetwork(FIRST));
+        assertEquals(Addresses.sharedNetwork(FIRST), Addresses.sharedNetwork(SECOND));
+        assertNull(Addresses.sharedNetwork("192.0.2.10"));
+        assertNull(Addresses.sharedNetwork("not an address"));
     }
 
-    @Test void twoAddressesInOneSlash64ShareOneLookup() throws Exception {
+    @Test void flaggedAddressBlocksItsSlash64NeighbourWithoutANewLookup() throws Exception {
         provider.answer(info(FIRST, "Canada", "CA", true, false));
+        LookupService service = service(0);
+        assertEquals(Source.PROVIDER, get(service.lookup(FIRST, false)).source());
+        Result neighbour = get(service.lookup(SECOND, false, Duration.ofSeconds(5)));
+        assertEquals(Source.MEMORY, neighbour.source());
+        assertEquals(SECOND, neighbour.info().ip(), "the neighbour gets its own address back");
+        assertTrue(neighbour.info().vpn());
+        assertEquals(1, provider.calls.get(), "no new lookup for the neighbour");
+
+        provider.answer(info(OTHER_NETWORK, "Canada", "CA", true, false));
+        assertEquals(Source.PROVIDER, get(service.lookup(OTHER_NETWORK, false)).source());
+        assertEquals(2, provider.calls.get(), "another /64 is looked up on its own");
+    }
+
+    @Test void cleanAddressDoesNotClearItsNeighbour() throws Exception {
+        provider.answer(info(FIRST, "Canada", "CA", false, false)).answer(info(SECOND, "Canada", "CA", true, false));
+        LookupService service = service(0);
+        assertFalse(get(service.lookup(FIRST, false)).info().vpn());
+        Result neighbour = get(service.lookup(SECOND, false));
+        assertEquals(Source.PROVIDER, neighbour.source(), "a clean answer is never used for another address");
+        assertTrue(neighbour.info().vpn());
+        assertEquals(2, provider.calls.get());
+        assertFalse(get(service.lookup(FIRST, false)).info().vpn(), "an address's own answer comes before its /64");
+        assertTrue(get(service.lookup(text("2001:db8:1:2::77"), false)).info().vpn(), "the flagged answer covers the rest of the /64");
+        assertEquals(2, provider.calls.get());
+    }
+
+    @Test void neighboursLookedUpAtOnceEachGetTheirOwnLookup() throws Exception {
+        provider.answer(info(FIRST, "Canada", "CA", false, false)).answer(info(SECOND, "Canada", "CA", false, false));
         provider.gate = new CountDownLatch(1);
         LookupService service = service(0);
         CompletableFuture<Result> first = service.lookup(FIRST, false, Duration.ofSeconds(5));
         CompletableFuture<Result> second = service.lookup(SECOND, false, Duration.ofSeconds(5));
         provider.gate.countDown();
         assertEquals(FIRST, get(first).info().ip());
-        Result shared = get(second);
-        assertEquals(SECOND, shared.info().ip(), "each caller gets its own address back");
-        assertTrue(shared.info().vpn());
-        assertEquals(1, provider.calls.get(), "one provider request for the whole /64");
-
-        Result later = get(service.lookup(text("2001:db8:1:2::99"), false));
-        assertEquals(Source.MEMORY, later.source());
-        assertEquals(text("2001:db8:1:2::99"), later.info().ip());
-        assertEquals(1, provider.calls.get());
-
-        provider.answer(info(OTHER_NETWORK, "Canada", "CA", false, false));
-        assertEquals(Source.PROVIDER, get(service.lookup(OTHER_NETWORK, false)).source());
-        assertEquals(2, provider.calls.get(), "another /64 is looked up on its own");
+        assertEquals(SECOND, get(second).info().ip());
+        assertEquals(2, provider.calls.get());
     }
 
     @Test void storageKeepsOneRowPerAddress() throws Exception {
-        provider.answer(info(FIRST, "Canada", "CA", false, false));
+        provider.answer(info(FIRST, "Canada", "CA", true, false)).answer(info(SECOND, "Canada", "CA", true, false));
         LookupService service = service(0);
         get(service.lookup(FIRST, false));
         for (int i = 0; i < 100 && !storage.rows.containsKey(FIRST); i++) Thread.sleep(20);
         assertEquals(List.of(FIRST), List.copyOf(storage.rows.keySet()));
-        assertTrue(service.forget(SECOND), "forgetting one address forgets its /64 in memory");
-        assertEquals(Source.STORAGE, get(service.lookup(FIRST, false)).source());
+        assertTrue(service.forget(SECOND), "forgetting a neighbour forgets the answer kept for its /64");
+        assertEquals(Source.PROVIDER, get(service.lookup(SECOND, false)).source());
+        assertEquals(Source.MEMORY, get(service.lookup(FIRST, false)).source(), "the address's own answer stays");
     }
 
-    @Test void noCountryPauseCoversTheWholeSlash64() throws Exception {
-        provider.answer(new IpInfo(FIRST, null, null, null, null, null, null, null, null, false, false, null, TestSupport.NOW));
+    @Test void noCountryPauseStaysPerAddress() throws Exception {
+        provider.answer(new IpInfo(FIRST, null, null, null, null, null, null, null, null, false, false, null, TestSupport.NOW))
+                .answer(info(SECOND, "Canada", "CA", true, false));
         LookupService service = service(0);
         assertInstanceOf(ProviderChain.NoCountryException.class, failure(service.lookup(FIRST, false)));
-        assertTrue(failure(service.lookup(SECOND, false)).getMessage().contains("not asking again yet"));
-        assertEquals(1, provider.calls.get());
+        assertTrue(failure(service.lookup(FIRST, false)).getMessage().contains("not asking again yet"));
+        assertTrue(get(service.lookup(SECOND, false)).info().vpn(), "a paused neighbour would be let in unchecked");
+        assertEquals(2, provider.calls.get());
     }
 
     @Test void queuedLookupIsDroppedOnceItsLoginStoppedWaiting() throws Exception {
@@ -157,7 +181,7 @@ class LookupLimitsTest {
         get(service.lookup("192.0.2.1", false));
         get(service.lookup("192.0.2.2", false));
         Throwable over = failure(service.lookup("192.0.2.3", false));
-        assertInstanceOf(LookupService.SkippedException.class, over);
+        assertInstanceOf(LookupService.BudgetExceededException.class, over);
         assertTrue(over.getMessage().contains("budget of 2 per minute"), over.getMessage());
         failure(service.lookup("192.0.2.4", false));
         assertEquals(2, provider.calls.get());

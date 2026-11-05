@@ -94,9 +94,10 @@ public final class OriginGateConfig {
         private final IpInfoLite ipinfo;
         private final MaxMind maxmind;
         private final int maxLookupsPerMinute;
+        private final FailureMode onBudgetExceeded;
 
-        /** {@code maxLookupsPerMinute} 0 means no limit. */
-        public Lookup(boolean skipPrivateAddresses, FailureMode onFailure, int waitMillis, List<String> countryFrom, List<String> vpnFrom, ProxyCheck proxycheck, IpHub iphub, IpApi ipApi, IpInfoLite ipinfo, MaxMind maxmind, int maxLookupsPerMinute) {
+        /** {@code maxLookupsPerMinute} 0 means no limit. {@code onBudgetExceeded} is {@code onFailure} when not set. */
+        public Lookup(boolean skipPrivateAddresses, FailureMode onFailure, int waitMillis, List<String> countryFrom, List<String> vpnFrom, ProxyCheck proxycheck, IpHub iphub, IpApi ipApi, IpInfoLite ipinfo, MaxMind maxmind, int maxLookupsPerMinute, FailureMode onBudgetExceeded) {
             this.skipPrivateAddresses = skipPrivateAddresses;
             this.onFailure = onFailure;
             this.waitMillis = waitMillis;
@@ -108,6 +109,7 @@ public final class OriginGateConfig {
             this.ipinfo = ipinfo;
             this.maxmind = maxmind;
             this.maxLookupsPerMinute = maxLookupsPerMinute;
+            this.onBudgetExceeded = onBudgetExceeded;
         }
 
         public boolean skipPrivateAddresses() { return skipPrivateAddresses; }
@@ -121,6 +123,7 @@ public final class OriginGateConfig {
         public IpInfoLite ipinfo() { return ipinfo; }
         public MaxMind maxmind() { return maxmind; }
         public int maxLookupsPerMinute() { return maxLookupsPerMinute; }
+        public FailureMode onBudgetExceeded() { return onBudgetExceeded; }
 
         @Override public boolean equals(Object other) {
             if (this == other) return true;
@@ -136,10 +139,11 @@ public final class OriginGateConfig {
                 && java.util.Objects.equals(ipApi, that.ipApi)
                 && java.util.Objects.equals(ipinfo, that.ipinfo)
                 && java.util.Objects.equals(maxmind, that.maxmind)
-                && maxLookupsPerMinute == that.maxLookupsPerMinute;
+                && maxLookupsPerMinute == that.maxLookupsPerMinute
+                && onBudgetExceeded == that.onBudgetExceeded;
         }
-        @Override public int hashCode() { return java.util.Objects.hash(skipPrivateAddresses, onFailure, waitMillis, countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind, maxLookupsPerMinute); }
-        @Override public String toString() { return "Lookup[" + "skipPrivateAddresses=" + skipPrivateAddresses + ", " + "onFailure=" + onFailure + ", " + "waitMillis=" + waitMillis + ", " + "countryFrom=" + countryFrom + ", " + "vpnFrom=" + vpnFrom + ", " + "proxycheck=" + proxycheck + ", " + "iphub=" + iphub + ", " + "ipApi=" + ipApi + ", " + "ipinfo=" + ipinfo + ", " + "maxmind=" + maxmind + ", " + "maxLookupsPerMinute=" + maxLookupsPerMinute + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(skipPrivateAddresses, onFailure, waitMillis, countryFrom, vpnFrom, proxycheck, iphub, ipApi, ipinfo, maxmind, maxLookupsPerMinute, onBudgetExceeded); }
+        @Override public String toString() { return "Lookup[" + "skipPrivateAddresses=" + skipPrivateAddresses + ", " + "onFailure=" + onFailure + ", " + "waitMillis=" + waitMillis + ", " + "countryFrom=" + countryFrom + ", " + "vpnFrom=" + vpnFrom + ", " + "proxycheck=" + proxycheck + ", " + "iphub=" + iphub + ", " + "ipApi=" + ipApi + ", " + "ipinfo=" + ipinfo + ", " + "maxmind=" + maxmind + ", " + "maxLookupsPerMinute=" + maxLookupsPerMinute + ", " + "onBudgetExceeded=" + onBudgetExceeded + "]"; }
 
         public static final List<String> PROVIDERS = io.github.origingate.core.util.Compat.list("proxycheck", "iphub", "ip-api", "ipinfo", "maxmind");
         /** Providers whose free data has a VPN check. */

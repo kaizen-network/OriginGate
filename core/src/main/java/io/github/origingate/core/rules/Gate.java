@@ -110,43 +110,65 @@ public final class Gate {
         return Optional.empty();
     }
 
-    /** Applies the vpn, proxy, and country rules to a finished lookup. */
-    public Decision afterLookup(LoginAttempt attempt, LookupService.Result result) {
-        IpInfo info = result.info();
-        OriginGateConfig.Rules rules = config.rules();
+    /** A rule that matched lookup data, before bypass permissions are considered. */
+    public static final class Match {
+        private final Rule rule;
+        private final List<String> bypassPermissions;
+        private final String note;
+
+        Match(Rule rule, List<String> bypassPermissions, String note) {
+            this.rule = rule;
+            this.bypassPermissions = bypassPermissions;
+            this.note = note;
+        }
+
+        public Rule rule() { return rule; }
+        public List<String> bypassPermissions() { return bypassPermissions; }
+        public String note() { return note; }
+    }
+
+    /**
+     * The first of the deny-networks, vpn, proxy, hosting, and country rules that matches {@code info}, or empty.
+     * A match kicks unless the player has a bypass permission, so the lookup cache shares only such answers
+     * across an IPv6 /64.
+     */
+    public static Optional<Match> match(OriginGateConfig.Rules rules, IpInfo info) {
         OriginGateConfig.NetworkRule networks = rules.denyNetworks();
         if (networks.enabled()) {
             Optional<String> listed = listedNetwork(info, networks);
-            log.debug("Is " + info.ip() + " on a denied network? " + listed.orElse("no"));
             if (listed.isPresent()) {
-                return matched(attempt, Rule.DENY_NETWORKS, networks.bypassPermissions(), result,
-                        "network is on the deny list (" + listed.get() + ")");
+                return Optional.of(new Match(Rule.DENY_NETWORKS, networks.bypassPermissions(),
+                        "network is on the deny list (" + listed.get() + ")"));
             }
         }
-        log.debug("Is " + info.ip() + " a VPN? " + yesNo(info.vpn()));
-        if (rules.vpn().enabled() && info.vpn()) {
-            return matched(attempt, Rule.VPN, rules.vpn().bypassPermissions(), result, "flagged as VPN");
-        }
-        log.debug("Is " + info.ip() + " a proxy? " + yesNo(info.proxy()));
+        if (rules.vpn().enabled() && info.vpn()) return Optional.of(new Match(Rule.VPN, rules.vpn().bypassPermissions(), "flagged as VPN"));
         if (rules.proxy().enabled() && info.proxy() && !Countries.matchesAny(info, rules.proxy().allowedCountries())) {
-            return matched(attempt, Rule.PROXY, rules.proxy().bypassPermissions(), result, "flagged as proxy");
+            return Optional.of(new Match(Rule.PROXY, rules.proxy().bypassPermissions(), "flagged as proxy"));
         }
-        if (rules.hosting().enabled()) {
-            log.debug("Is " + info.ip() + " on a hosting network? " + yesNo(info.hosting()));
-            if (info.hosting()) {
-                return matched(attempt, Rule.HOSTING, rules.hosting().bypassPermissions(), result, "hosting or datacenter network");
-            }
+        if (rules.hosting().enabled() && info.hosting()) {
+            return Optional.of(new Match(Rule.HOSTING, rules.hosting().bypassPermissions(), "hosting or datacenter network"));
         }
         OriginGateConfig.CountryRule country = rules.country();
         if (country.enabled()) {
             boolean listed = Countries.matchesAny(info, country.countries());
-            log.debug("Is " + info.ip() + " in the country list? " + yesNo(listed));
             if (country.mode() == CountryMode.ALLOWLIST ? !listed : listed) {
-                return matched(attempt, Rule.COUNTRY, country.bypassPermissions(), result,
-                        country.mode() == CountryMode.ALLOWLIST ? "country not on the allowlist" : "country on the denylist");
+                return Optional.of(new Match(Rule.COUNTRY, country.bypassPermissions(),
+                        country.mode() == CountryMode.ALLOWLIST ? "country not on the allowlist" : "country on the denylist"));
             }
         }
-        return allow("no rule matched", result);
+        return Optional.empty();
+    }
+
+    /** Applies the deny-networks, vpn, proxy, hosting, and country rules to a finished lookup. */
+    public Decision afterLookup(LoginAttempt attempt, LookupService.Result result) {
+        IpInfo info = result.info();
+        Optional<Match> match = match(config.rules(), info);
+        log.debug("Rules for " + info.ip() + " (vpn " + yesNo(info.vpn()) + ", proxy " + yesNo(info.proxy()) + ", hosting "
+                + yesNo(info.hosting()) + ", country " + Text.dash(info.countryCode()) + ", " + Text.dash(info.asn()) + "): "
+                + (match.isPresent() ? match.get().rule().id() + " matched" : "none matched"));
+        if (!match.isPresent()) return allow("no rule matched", result);
+        Match matched = match.get();
+        return matched(attempt, matched.rule(), matched.bypassPermissions(), result, matched.note());
     }
 
     private Decision matched(LoginAttempt attempt, Rule rule, List<String> bypassPermissions,
@@ -161,11 +183,16 @@ public final class Gate {
     }
 
     private Decision failed(LoginAttempt attempt, Throwable error) {
-        String reason = Text.unwrap(error) instanceof TimeoutException
+        Throwable cause = Text.unwrap(error);
+        boolean overBudget = cause instanceof LookupService.BudgetExceededException;
+        String reason = cause instanceof TimeoutException
                 ? "lookup took longer than " + config.lookup().waitMillis() + " ms"
                 : "lookup failed: " + Text.message(error);
-        boolean deny = config.lookup().onFailure() == FailureMode.DENY;
-        log.debug("Lookup for " + attempt.username() + " failed (" + reason + "), on-lookup-failure is " + (deny ? "deny" : "allow"));
+        // Over the budget, on-budget-exceeded decides; when it is not set it is the same as on-lookup-failure.
+        FailureMode mode = overBudget ? config.lookup().onBudgetExceeded() : config.lookup().onFailure();
+        boolean deny = mode == FailureMode.DENY;
+        log.debug("Lookup for " + attempt.username() + " failed (" + reason + "), "
+                + (overBudget ? "on-budget-exceeded" : "on-lookup-failure") + " is " + (deny ? "deny" : "allow"));
         return new Decision(deny ? Outcome.DENY : Outcome.ALLOW, Rule.LOOKUP_FAILURE, reason, null, config.dryRun());
     }
 
