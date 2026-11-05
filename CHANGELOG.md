@@ -5,6 +5,12 @@
 ### Added
 
 - Anonymous usage statistics through [bStats](https://bstats.org) on Bukkit, BungeeCord, and Velocity. No player names, UUIDs, or IP addresses are sent. See [storage and privacy](docs/storage-and-privacy.md#bstats) for what is sent and how to turn it off.
+- Releases are also published on [Hangar](https://hangar.papermc.io): the Bukkit JAR for Paper, the BungeeCord JAR for Waterfall, and the Velocity JAR.
+- Waterfall 1.21 build 615 is tested with the BungeeCord JAR. See [compatibility](docs/compatibility.md).
+
+### Changed
+
+- Corrected the BungeeCord JAR's Java requirement: the plugin needs Java 8 or newer, and current BungeeCord and Waterfall builds themselves need Java 17 or newer. Earlier notes said Java 11.
 
 ## 0.2.0 (2026-10-29)
 

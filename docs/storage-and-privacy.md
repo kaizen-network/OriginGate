@@ -82,7 +82,7 @@ Set `enabled` to false in the bStats file, then restart the server or proxy:
 
 | Platform | File | Setting |
 | --- | --- | --- |
-| Bukkit, Spigot, Paper, BungeeCord | `plugins/bStats/config.yml` | `enabled: false` |
+| Bukkit, Spigot, Paper, BungeeCord, Waterfall | `plugins/bStats/config.yml` | `enabled: false` |
 | Velocity | `plugins/bStats/config.txt` | `enabled=false` |
 
 This file is shared, so it turns off bStats for every plugin on that server, and for the server software too if it uses bStats.
