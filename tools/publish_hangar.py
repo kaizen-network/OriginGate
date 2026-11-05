@@ -12,9 +12,11 @@ with a tag). Settings per project live in tools/hangar.json:
       ]
     }
 
-All JARs go into one Hangar version, one file per platform. A JAR over Hangar's
-10 MB upload limit is added as a link to its GitHub release download instead
-(needs GITHUB_REPOSITORY, which Actions sets). min_version is a
+All JARs go into one Hangar version, one file per platform. Hangar accepts files
+up to 10 MB each and less than 15 MB in one upload. A JAR over the per-file limit,
+and then the largest of the rest until the others fit the total, is added as a
+link to its GitHub release download instead (needs GITHUB_REPOSITORY, which
+Actions sets). min_version is a
 platform version from Hangar's list (Minecraft versions for PAPER, proxy
 versions for VELOCITY). A dependency without "url" is a Hangar project name.
 A version already on Hangar is skipped, so re-running is safe. Notes come from
@@ -42,10 +44,28 @@ from publish_modrinth import absolute_links, changelog_section
 
 ROOT = Path(__file__).resolve().parent.parent
 API = 'https://hangar.papermc.io/api/v1'
-# Hangar's max-file-size (backend application.yml). Bigger JARs are linked to
-# the GitHub release download instead of uploaded.
+# Hangar's max-file-size (backend application.yml) for each file, and its
+# maxTotalFilesSize (VersionControllerConfig, "files have to be less than 15MB
+# total") for all files in one upload. JARs that do not fit are linked to the
+# GitHub release download instead of uploaded.
 MAX_UPLOAD_BYTES = 10_000_000
+MAX_TOTAL_UPLOAD_BYTES = 15_000_000
 USER_AGENT = 'kaizen-network/hangar-publish (github@rayhan.ch)'
+
+
+def files_to_link(sizes):
+    """Indexes of the files to link instead of upload: every file over the
+    per-file limit, then the largest of the rest until the uploaded ones total
+    less than the per-upload limit."""
+    linked = {i for i, size in enumerate(sizes) if size > MAX_UPLOAD_BYTES}
+    uploaded = sorted((i for i in range(len(sizes)) if i not in linked), key=lambda i: sizes[i], reverse=True)
+    total = sum(sizes[i] for i in uploaded)
+    for i in uploaded:
+        if total < MAX_TOTAL_UPLOAD_BYTES:
+            break
+        linked.add(i)
+        total -= sizes[i]
+    return linked
 
 
 def platform_versions_since(groups, minimum):
@@ -126,15 +146,17 @@ def main():
         print(f'skip {version}: already on Hangar')
     else:
         file_paths, files, platform_deps, plugin_deps = [], [], {}, {}
-        for entry in config['files']:
-            file_path = args.dist / entry['pattern'].format(version=version)
+        release_files = [args.dist / entry['pattern'].format(version=version) for entry in config['files']]
+        for file_path in release_files:
             if not file_path.is_file():
                 raise SystemExit(f'release has no {file_path.name}')
+        linked = files_to_link([file_path.stat().st_size for file_path in release_files])
+        for index, (entry, file_path) in enumerate(zip(config['files'], release_files)):
             platform = entry['platform']
             groups = request('GET', f'/platforms/{platform}/versions', None)
-            if file_path.stat().st_size > MAX_UPLOAD_BYTES:
+            if index in linked:
                 if not repo:
-                    raise SystemExit(f'{file_path.name} is over Hangar\'s upload limit and needs GITHUB_REPOSITORY for a link')
+                    raise SystemExit(f'{file_path.name} does not fit Hangar\'s upload limits and needs GITHUB_REPOSITORY for a link')
                 files.append({'platforms': [platform],
                               'externalUrl': f'https://github.com/{repo}/releases/download/{args.tag}/{file_path.name}'})
             else:

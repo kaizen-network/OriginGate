@@ -99,5 +99,56 @@ class PublishHangarTest(unittest.TestCase):
                              f'https://github.com/kaizen-network/Example/releases/download/v1.0.0/{name}')
 
 
+    def test_files_to_link_keeps_both_limits(self):
+        with mock.patch.object(ph, 'MAX_UPLOAD_BYTES', 10), mock.patch.object(ph, 'MAX_TOTAL_UPLOAD_BYTES', 15):
+            self.assertEqual(ph.files_to_link([4, 5, 5]), set(), 'under both limits')
+            self.assertEqual(ph.files_to_link([5, 5, 5]), {0}, 'a total of exactly 15 is not less than 15')
+            self.assertEqual(ph.files_to_link([7, 8, 6]), {1}, 'the largest goes first')
+            self.assertEqual(ph.files_to_link([9, 9, 9]), {0, 1}, 'until the rest fit')
+            self.assertEqual(ph.files_to_link([11, 6, 6]), {0}, 'over the per-file limit, the rest fit')
+            self.assertEqual(ph.files_to_link([11, 9, 9]), {0, 1})
+
+    def test_release_jar_sizes_fit_after_linking(self):
+        # The 1.1.0 JARs: each under 10 MB, together about 22.5 MB.
+        sizes = [7_795_961, 7_784_852, 6_904_058]
+        linked = ph.files_to_link(sizes)
+        self.assertEqual(linked, {0})
+        self.assertLess(sum(size for i, size in enumerate(sizes) if i not in linked), ph.MAX_TOTAL_UPLOAD_BYTES)
+
+    def test_jars_over_the_total_are_linked_from_the_largest(self):
+        config = json.loads((Path(__file__).parent / 'hangar.json').read_text(encoding='utf-8'))
+        minimums = {entry['platform']: entry['min_version'] for entry in config['files']}
+        captured = {}
+
+        def fake(method, path, jwt, body=None, content_type=None, missing_ok=False):
+            if path.startswith('/authenticate'):
+                return {'token': 'jwt'}
+            if path.startswith('/platforms/'):
+                return [{'version': minimums[path.split('/')[2]], 'subVersions': []}]
+            if '/versions/' in path:
+                return None
+            return {'url': 'https://hangar.test/version'} if path.endswith('/upload') else {}
+
+        def fake_multipart(data, file_paths):
+            captured['data'], captured['paths'] = data, file_paths
+            return b'', 'multipart/form-data; boundary=x'
+
+        names = [entry['pattern'].format(version='1.0.0') for entry in config['files']]
+        with tempfile.TemporaryDirectory() as folder:
+            for name, size in zip(names, (7, 8, 6)):
+                (Path(folder) / name).write_bytes(b'x' * size)
+            with mock.patch.object(ph, 'request', fake), mock.patch.object(ph, 'multipart', fake_multipart), \
+                    mock.patch.object(ph, 'MAX_UPLOAD_BYTES', 10), mock.patch.object(ph, 'MAX_TOTAL_UPLOAD_BYTES', 15), \
+                    mock.patch.dict(os.environ, {'HANGAR_TOKEN': 'key', 'GITHUB_REPOSITORY': 'kaizen-network/Example'}), \
+                    mock.patch.object(sys, 'argv', ['publish_hangar.py', '--tag', 'v1.0.0', '--dist', folder]), \
+                    mock.patch('builtins.print'):
+                ph.main()
+        files = captured['data']['files']
+        self.assertEqual([p.name for p in captured['paths']], [names[0], names[2]])
+        self.assertNotIn('externalUrl', files[0])
+        self.assertEqual(files[1]['externalUrl'], f'https://github.com/kaizen-network/Example/releases/download/v1.0.0/{names[1]}')
+        self.assertNotIn('externalUrl', files[2])
+
+
 if __name__ == '__main__':
     unittest.main()
