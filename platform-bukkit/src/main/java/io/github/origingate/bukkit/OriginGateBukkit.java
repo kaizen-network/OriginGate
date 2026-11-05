@@ -5,6 +5,7 @@ import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.net.Addresses;
 import io.github.origingate.core.rules.*;
 import io.github.origingate.presentation.MessagesRenderer;
+import org.bstats.bukkit.Metrics;
 import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
@@ -20,6 +21,7 @@ import java.util.concurrent.*;
 
 /** Bukkit APIs shared by legacy CraftBukkit, Spigot, and Paper. */
 public final class OriginGateBukkit extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    private static final int BSTATS_ID = 35140;
     /** Set while Bukkit runs a command, so replies reach senders that only collect output meanwhile (RCON). */
     private static final ThreadLocal<Boolean> DISPATCHING = new ThreadLocal<>();
     private final PendingAdmissions<Preflight> pending = new PendingAdmissions<>(512, Clock.systemUTC());
@@ -29,6 +31,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     private final Map<PlayerLoginEvent, Optional<Preflight>> refused = new ConcurrentHashMap<>();
     private RuntimeController controller;
     private Commands commands;
+    private Metrics metrics;
     private volatile boolean stopping;
     /** Old offline-mode CraftBukkit never fires it; then a login without a prefetched result is asked to reconnect. */
     private volatile boolean preLoginSeen;
@@ -61,6 +64,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getScheduler().runTaskTimerAsynchronously(this, controller::cleanup, 1200, 72000);
         getServer().getScheduler().runTaskTimerAsynchronously(this, () -> { pending.expire(); deferred.expire(); expireNotices(); }, 1200, 1200);
+        metrics = new Metrics(this, BSTATS_ID);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -259,6 +263,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
     @Override public void onDisable() {
         stopping = true;
         getServer().getScheduler().cancelTasks(this);
+        if (metrics != null) metrics.shutdown();
         pending.clear(); deferred.clear(); notices.clear(); preflightEvents.clear(); refused.clear();
         if (controller != null) controller.stop(10_000);
     }

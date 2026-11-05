@@ -125,8 +125,6 @@ try:
             if args.cache:
                 for name in ('libraries','cache'):
                     if (args.cache/name).is_dir():shutil.copytree(args.cache/name,RUN/name,dirs_exist_ok=True)
-            (RUN/'plugins/bStats').mkdir(exist_ok=True)
-            (RUN/'plugins/bStats/config.yml').write_text('enabled: false\n')
     else:
         shutil.copy2(ROOT/f'platform-bungeecord/build/libs/OriginGate-BungeeCord-{v.VERSION}.jar',RUN/'plugins/OriginGate.jar')
         shutil.copy2(args.server,RUN/'server.jar')
@@ -169,6 +167,9 @@ permissions:
                         payload=b'\x00'+v.string(json.dumps({'text':'probe reached backend'}));c.sendall(v.varint(len(payload))+payload)
                     except OSError:pass
         threading.Thread(target=backend_loop,daemon=True).start()
+    # Keeps test servers out of bStats; OriginGate and Paper both read this file.
+    (RUN/'plugins/bStats').mkdir(exist_ok=True)
+    (RUN/'plugins/bStats/config.yml').write_text('enabled: false\n')
     config()
     (RUN/'eula.txt').write_text('eula=true\n')
     process=subprocess.Popen([java,'-Xms128m','-Xmx512m','-Dterminal.jline=false','-jar','server.jar','nogui'],cwd=RUN,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)

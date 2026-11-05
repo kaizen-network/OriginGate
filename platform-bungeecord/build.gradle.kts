@@ -5,6 +5,7 @@ dependencies {
     compileOnly("net.md-5:bungeecord-event:1.21-R0.4") { isTransitive = false }
     compileOnly("net.md-5:bungeecord-chat:1.21-R0.4") { isTransitive = false }
     runtimeOnly("org.slf4j:slf4j-jdk14:2.0.17")
+    implementation("org.bstats:bstats-bungeecord:3.2.1")
 }
 tasks.compileJava { options.release.set(8) }
 tasks.jar { enabled = false }
@@ -17,6 +18,7 @@ tasks.shadowJar {
     relocate("org.yaml.snakeyaml", "io.github.origingate.internal.snakeyaml")
     relocate("org.mariadb.jdbc", "io.github.origingate.internal.mariadb")
     relocate("com.google.gson", "io.github.origingate.internal.gson")
+    relocate("org.bstats", "io.github.origingate.internal.bstats")
     relocate("net.kyori", "io.github.origingate.internal.kyori")
     relocate("org.slf4j", "io.github.origingate.internal.slf4j")
     exclude("module-info.class", "META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA")

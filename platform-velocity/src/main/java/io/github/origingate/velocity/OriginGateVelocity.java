@@ -21,6 +21,7 @@ import io.github.origingate.core.RuntimeController;
 import io.github.origingate.core.rules.Decision;
 import io.github.origingate.core.rules.LoginAttempt;
 import net.kyori.adventure.text.Component;
+import org.bstats.velocity.Metrics;
 import org.slf4j.Logger;
 
 import java.net.InetAddress;
@@ -36,14 +37,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @Plugin(id = "origingate", name = "OriginGate", version = OriginGateRuntime.VERSION,
         description = "Checks where a connection comes from (VPN, proxy, country) before it joins")
 public final class OriginGateVelocity {
+    private static final int BSTATS_ID = 35142;
     private final ProxyServer proxy;
     private final Logger logger;
+    private final Metrics.Factory metricsFactory;
     private final RuntimeController controller;
     private final Map<UUID, Component> bypassNotices = new ConcurrentHashMap<>();
+    private Metrics metrics;
 
-    @Inject public OriginGateVelocity(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory) {
+    @Inject public OriginGateVelocity(ProxyServer proxy, Logger logger, @DataDirectory Path dataDirectory,
+                                      Metrics.Factory metricsFactory) {
         this.proxy = proxy;
         this.logger = logger;
+        this.metricsFactory = metricsFactory;
         this.controller = new RuntimeController(dataDirectory, new Log() {
             @Override public void info(String message) { logger.info(message); }
             @Override public void warn(String message, Throwable cause) {
@@ -74,6 +80,7 @@ public final class OriginGateVelocity {
                 new OriginGateCommand(commands));
         proxy.getScheduler().buildTask(this, controller::cleanup)
                 .delay(Duration.ofMinutes(1)).repeat(Duration.ofHours(1)).schedule();
+        metrics = metricsFactory.make(this, BSTATS_ID);
     }
 
     /**
@@ -151,6 +158,7 @@ public final class OriginGateVelocity {
 
     /** Velocity waits for shutdown listeners, so the runtime closes and queued log lines are written first. */
     @Subscribe public void onShutdown(ProxyShutdownEvent event) {
+        if (metrics != null) metrics.shutdown();
         controller.close();
     }
 

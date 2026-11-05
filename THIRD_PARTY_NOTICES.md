@@ -11,6 +11,7 @@ OriginGate is GPL-3.0-only. Bundled dependencies keep the licenses below. Their 
 | Gson | 2.10.1 | Apache-2.0 | Relocated to `io.github.origingate.internal.gson` |
 | Adventure, MiniMessage, legacy serializer, examination | 4.26.1 / 1.3.0 | MIT | Bukkit/BungeeCord relocate `net.kyori` to `io.github.origingate.internal.kyori`; Velocity supplies its own |
 | SLF4J API and JUL binding | 2.0.17 | MIT | Bukkit/BungeeCord relocate to `io.github.origingate.internal.slf4j`; Velocity supplies its own binding |
+| bStats Metrics | 3.2.1 | MIT | Relocated to `io.github.origingate.internal.bstats`; each JAR has only its own platform's module |
 
 Relocation changes package names in bytecode and service descriptors. OriginGate does not edit these libraries' upstream Java sources. The Gradle scripts describe the changes. You can rebuild the project with a modified dependency and replace the resulting JAR; nothing prevents replacement.
 
@@ -20,4 +21,4 @@ Server and proxy APIs are not bundled. The Java 8 MaxMind reader predates later 
 
 ## Data sent to third parties
 
-OriginGate sends each checked player's IP address, and that provider's key or token, to the lookup providers listed in `lookup.country-from` and `lookup.vpn-from`: proxycheck.io (by default, at `lookup.proxycheck.base-url`), IPHub, ip-api.com, or IPinfo. Only listed providers are contacted. When `lookup.maxmind.account-id` and `license-key` are set, those two values are sent to MaxMind to download the GeoLite2 file; no player data is sent to MaxMind. The GeoLite2 data is not bundled; it is downloaded under MaxMind's GeoLite End User License Agreement. Nothing else is sent anywhere.
+OriginGate sends each checked player's IP address, and that provider's key or token, to the lookup providers listed in `lookup.country-from` and `lookup.vpn-from`: proxycheck.io (by default, at `lookup.proxycheck.base-url`), IPHub, ip-api.com, or IPinfo. Only listed providers are contacted. When `lookup.maxmind.account-id` and `license-key` are set, those two values are sent to MaxMind to download the GeoLite2 file; no player data is sent to MaxMind. The GeoLite2 data is not bundled; it is downloaded under MaxMind's GeoLite End User License Agreement. Unless turned off in `plugins/bStats/config.yml` (`config.txt` on Velocity), anonymous usage statistics are sent to [bStats](https://bstats.org) every 30 minutes; they contain no player names, UUIDs, or IP addresses. Nothing else is sent anywhere.

@@ -25,7 +25,7 @@ With JDK 8 installed, run `gradlew :platform-bukkit:legacyRuntimeProbe` to exerc
 
 ## Bukkit and BungeeCord connection probes
 
-`tools/run_platform_probe.py` copies a supplied server JAR into an isolated `.run/integration-<platform>` folder, binds to loopback, installs test-only permission/routing plugins, and checks allow/deny, bypasses, failures, dry-run, reload, and timeout behavior. It stops its own server afterwards. Use a disposable local server JAR, Python 3.11+, and JDK 25's `javac` on PATH. Select the server's Java runtime with `--java`.
+`tools/run_platform_probe.py` copies a supplied server JAR into an isolated `.run/integration-<platform>` folder, binds to loopback, installs test-only permission/routing plugins, turns off bStats in `plugins/bStats/config.yml`, and checks allow/deny, bypasses, failures, dry-run, reload, and timeout behavior. It stops its own server afterwards. Use a disposable local server JAR, Python 3.11+, and JDK 25's `javac` on PATH. Select the server's Java runtime with `--java`.
 
 ```powershell
 python tools/run_platform_probe.py bukkit --server path/to/craftbukkit.jar --bukkit-api path/to/bukkit-1.7.2-R0.3.jar --java path/to/java8/bin/java
@@ -63,7 +63,7 @@ It checks table creation, a quoted provider name, and 200 concurrent writes to o
 
 `tools/run_velocity_probe.py` runs the built JAR on a real local Velocity with a stub lookup server. It needs Python 3.11+ and Java on PATH.
 
-Set up `.run/velocity` (ignored by Git) once: put a Velocity JAR at `velocity.jar`, disable bStats with `plugins/bStats/config.txt` containing `enabled=false`, and use this `velocity.toml` (the same as ConsentGate's test proxy):
+Set up `.run/velocity` (ignored by Git) once: put a Velocity JAR at `velocity.jar` and use this `velocity.toml` (the same as ConsentGate's test proxy):
 
 ```toml
 config-version = "2.7"
@@ -96,7 +96,7 @@ Then:
 python tools/run_velocity_probe.py
 ```
 
-The runner refuses a proxy not bound to `127.0.0.1:25590`. It replaces the JARs in `.run/velocity/plugins`, writes a probe `config.yml` with `skip-private-addresses: false`, starts the proxy, runs the checks, and stops it. A small Python client logs in with Java protocol 772 (1.21.8), and a listener on port 25591 stands in for the backend. Bypass permissions come from the test-only permission plugin (`plugins/origingate-probe-permissions/permissions.txt`, one `name permission` per line).
+The runner refuses a proxy not bound to `127.0.0.1:25590`. It replaces the JARs in `.run/velocity/plugins`, writes a probe `config.yml` with `skip-private-addresses: false`, turns off bStats in `plugins/bStats/config.txt`, starts the proxy, runs the checks, and stops it. A small Python client logs in with Java protocol 772 (1.21.8), and a listener on port 25591 stands in for the backend. Bypass permissions come from the test-only permission plugin (`plugins/origingate-probe-permissions/permissions.txt`, one `name permission` per line).
 
 Checks:
 

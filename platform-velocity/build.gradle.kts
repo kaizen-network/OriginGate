@@ -10,6 +10,7 @@ val probe: SourceSet = sourceSets.create("probe")
 
 dependencies {
     implementation(project(":presentation"))
+    implementation("org.bstats:bstats-velocity:3.2.1")
     compileOnly(velocityApi)
     annotationProcessor(velocityApi)
     testImplementation(velocityApi)
@@ -30,6 +31,7 @@ tasks.shadowJar {
     relocate("org.yaml.snakeyaml", "io.github.origingate.internal.snakeyaml")
     relocate("org.mariadb.jdbc", "io.github.origingate.internal.mariadb")
     relocate("com.google.gson", "io.github.origingate.internal.gson")
+    relocate("org.bstats", "io.github.origingate.internal.bstats")
     dependencies {
         // Velocity supplies Adventure and MiniMessage; a bundled copy could mix with the proxy's version.
         exclude(dependency("net.kyori:.*"))

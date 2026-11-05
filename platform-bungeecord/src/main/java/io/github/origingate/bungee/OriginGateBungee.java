@@ -11,6 +11,7 @@ import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.event.*;
 import net.md_5.bungee.api.plugin.*;
 import net.md_5.bungee.event.*;
+import org.bstats.bungeecord.Metrics;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -19,12 +20,14 @@ import java.util.concurrent.*;
 
 /** Requires BungeeCord's asynchronous PostLoginEvent (1.21-R0.4 API or newer). */
 public final class OriginGateBungee extends Plugin implements Listener {
+    private static final int BSTATS_ID = 35141;
     private final Map<ProxiedPlayer, LoginHold> holds = new ConcurrentHashMap<>();
     private final Set<ProxiedPlayer> admitted = ConcurrentHashMap.newKeySet();
     private final Map<ProxiedPlayer, net.md_5.bungee.api.config.ServerInfo> deferredRoutes = new ConcurrentHashMap<>();
     private final Map<ProxiedPlayer, Component> notices = new ConcurrentHashMap<>();
     private RuntimeController controller;
     private Commands commands;
+    private Metrics metrics;
     private volatile boolean stopping;
     @Override public void onEnable() {
         // On older proxies registerIntent does not exist, and every login would fail before admission.
@@ -52,6 +55,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
         getProxy().getPluginManager().registerListener(this, this);
         getProxy().getPluginManager().registerCommand(this, new GateCommand());
         getProxy().getScheduler().schedule(this, controller::cleanup, 1, 60, TimeUnit.MINUTES);
+        metrics = new Metrics(this, BSTATS_ID);
     }
     @EventHandler(priority = EventPriority.HIGHEST)
     public void login(PostLoginEvent event) {
@@ -182,6 +186,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
     @Override public void onDisable() {
         stopping = true;
         getProxy().getScheduler().cancel(this);
+        if (metrics != null) metrics.shutdown();
         holds.forEach((player, hold) -> {
             try { player.disconnect(TextComponent.fromLegacyText("OriginGate is stopping. Please reconnect.")); }
             finally { hold.close(); }

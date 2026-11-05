@@ -32,6 +32,7 @@ class VelocityArtifactTest {
                     "io/github/origingate/internal/snakeyaml/Yaml.class", "io/github/origingate/internal/mariadb/Driver.class",
                     "io/github/origingate/internal/maxmind17/Reader.class",
                     "io/github/origingate/internal/gson/Gson.class",
+                    "io/github/origingate/internal/bstats/velocity/Metrics$Factory.class", "META-INF/licenses/bStats.txt",
                     "org/sqlite/JDBC.class", "io/github/origingate/core/rules/Gate.class"}) {
                 assertNotNull(jar.getEntry(entry), entry);
             }
@@ -40,6 +41,7 @@ class VelocityArtifactTest {
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/maxmind/")), "MaxMind reader is relocated");
             assertTrue(jar.getEntry("module-info.class") == null, "no root module descriptor");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("com/google/gson/")), "Gson is isolated");
+            assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("org/bstats/")), "bStats is relocated");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("net/kyori/")), "Adventure comes from the proxy");
             assertTrue(jar.stream().noneMatch(e -> e.getName().startsWith("io/github/origingate/internal/maxmind8/")),
                     "the Java 8 MaxMind reader is not shipped for Java 21");

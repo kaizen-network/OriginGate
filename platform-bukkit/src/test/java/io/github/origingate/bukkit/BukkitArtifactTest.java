@@ -12,14 +12,17 @@ class BukkitArtifactTest {
             for (String name : new String[] {"plugin.yml", "config.yml", "messages.yml",
                     "io/github/origingate/bukkit/OriginGateBukkit.class", "io/github/origingate/internal/snakeyaml/Yaml.class",
                     "io/github/origingate/internal/gson/Gson.class", "io/github/origingate/internal/maxmind8/Reader.class",
-                    "io/github/origingate/internal/maxmind17/Reader.class", "META-INF/THIRD_PARTY_NOTICES.md"})
+                    "io/github/origingate/internal/maxmind17/Reader.class", "META-INF/THIRD_PARTY_NOTICES.md",
+                    "io/github/origingate/internal/bstats/bukkit/Metrics.class", "META-INF/licenses/bStats.txt"})
                 assertNotNull(jar.getJarEntry(name), name);
-            for (String name : new String[] {"io/github/origingate/bukkit/OriginGateBukkit.class", "io/github/origingate/core/rules/Gate.class"}) {
+            for (String name : new String[] {"io/github/origingate/bukkit/OriginGateBukkit.class", "io/github/origingate/core/rules/Gate.class",
+                    "io/github/origingate/internal/bstats/bukkit/Metrics.class", "io/github/origingate/internal/bstats/MetricsBase.class"}) {
                 byte[] bytes = jar.getInputStream(jar.getEntry(name)).readNBytes(8);
                 assertEquals(52, ((bytes[6] & 255) << 8) | (bytes[7] & 255));
             }
             assertFalse(jar.stream().anyMatch(e -> e.getName().startsWith("org/bukkit/")));
             assertFalse(jar.stream().anyMatch(e -> e.getName().startsWith("com/google/gson/")));
+            assertFalse(jar.stream().anyMatch(e -> e.getName().startsWith("org/bstats/")));
         }
     }
 }
