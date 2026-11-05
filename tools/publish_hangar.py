@@ -21,8 +21,9 @@ the release's CHANGELOG.md section, and MODRINTH.md replaces the main page.
 Versions with a "-" go to the Snapshot channel, others to Release. The API
 cannot create channels, so both must exist on the Hangar project.
 
-Standard library only. Needs HANGAR_TOKEN (an API key with create_version and
-edit_page). --dry-run prints what would be sent and uploads nothing.
+Standard library only. Needs HANGAR_TOKEN (an API key with view_public_info,
+create_version, and edit_page). --dry-run prints what would be sent and uploads
+nothing.
 """
 
 import argparse
