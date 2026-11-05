@@ -5,10 +5,16 @@
 `.\gradlew.bat build` runs them. `core:test` covers:
 
 - Config loading, bounds, unknown keys, paths, country codes, and redaction of passwords and keys
-- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip
+- The unchanged 1.0.0 `config.yml` and `messages.yml` (in `core/src/test/resources/upgrade/`) loading and reading the same as the current defaults apart from the new settings
+- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip, deny-networks by ASN and organisation text before the vpn rule, and the hosting rule
 - Country matching by code, including `XK`
 - Lookup order (memory, storage, provider), one request per IP, expiry, the answer arriving before the save, the 60-second storage pause, the 5-minute pause after a result without country, a refresh never joining a normal lookup, full queue
 - Lookup failure and timeout in both `on-lookup-failure` modes, dry-run, console log levels
+- IPv6: a flagged answer turning away its /64 neighbour without a lookup, a clean answer never shared, neighbours looked up at once getting their own lookups, the no-country pause per address
+- Dropping a queued lookup once its login stopped waiting, keeping it while any caller still waits, the lookups-per-minute budget with one alert and one recovery, `on-budget-exceeded` and its fallback to `on-lookup-failure`, and the status counters
+- Provider health: one alert on a pause and none while it stays paused, one after 3 failures in a row, one recovery, refused API keys, and the `status` lines
+- The offline-mode warning for each server mode, and a real runtime sending one staff alert when a stub provider answers 429
+- The SQLite error message on a system without a bundled native library
 - CIDR matching for IPv4 and IPv6, and literal-only IP parsing (no DNS)
 - SQLite storage, including a provider name with `'`, setup once an unreachable database answers, and a setup problem failing at startup
 - A retired runtime still answering lookups after a reload
@@ -19,7 +25,7 @@
 
 `platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes) and that placeholders render as plain text.
 
-`platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds and proxy packaging.
+`platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds and proxy packaging. All three artifact tests check that only the 8 listed SQLite native libraries are packed and that the JAR is under 10 MB.
 
 With JDK 8 installed, run `gradlew :platform-bukkit:legacyRuntimeProbe` to exercise the packaged MaxMind IPv4/IPv6 reader and SQLite on Java 8. Optional `-PlegacyServerJar=<absolute-path-to-craftbukkit.jar>` places an old server first on the classpath to verify SQLite isolation.
 

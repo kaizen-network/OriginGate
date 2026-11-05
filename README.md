@@ -6,7 +6,8 @@ OriginGate checks where each player connects from on Bukkit/Spigot/Paper, Bungee
 
 - IP data from proxycheck.io, IPHub, ip-api.com, IPinfo, or a local MaxMind GeoLite2 file. You choose which, and can combine them.
 - Lookups are saved (SQLite, or MySQL/MariaDB), so each IP is looked up at most once every 30 days by default.
-- Every rule is optional and has its own bypass permissions.
+- Rules for VPNs, proxies, hosting networks, countries, and networks or addresses you list. Every rule is optional and has its own bypass permissions.
+- Staff alerts when a lookup provider stops answering, `origingate status`, and a lookups-per-minute limit against bot floods.
 - Dry-run mode shows what would happen without kicking anyone.
 
 ## Requirements

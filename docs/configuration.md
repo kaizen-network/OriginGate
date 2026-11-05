@@ -8,7 +8,7 @@ order: 4
 
 `config.yml` is in `plugins/origingate/`. Run `origingate reload` after editing. A file with a mistake is refused, the old settings stay active, and the reply names the setting, for example `lookup.wait-millis must be a whole number from 1000 to 20000`. Unknown settings are refused too, so typos are caught.
 
-Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update.
+Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) are optional: a config without them works as it did in 1.0.0.
 
 ## Settings
 
@@ -18,7 +18,9 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `console-log` | `matches` | `none`, `kicks`, `matches`, `all`, or `debug`. See [logging](how-it-works.md#logging) |
 | `lookup.skip-private-addresses` | `true` | No lookup for loopback, LAN, link-local, and unique local addresses |
 | `lookup.on-lookup-failure` | `allow` | `allow` or `deny` |
-| `lookup.wait-millis` | `5000` | 1000 to 20000. Longest time a login is held |
+| `lookup.wait-millis` | `2500` | 1000 to 20000. Longest time a login is held. The default for new installs was 5000 before 1.1.0; an existing config keeps its value |
+| `lookup.max-lookups-per-minute` | `0` | 0 to 100000. Most lookups sent to providers in any 60 seconds, so a wave of bots cannot use up a provider's daily quota. Logins over it are not looked up. `0` means no limit |
+| `lookup.on-budget-exceeded` | not set | `allow` or `deny`, for logins over `max-lookups-per-minute`. Not set: the same as `on-lookup-failure`. See [flood protection](#flood-protection) |
 | `lookup.country-from` | `[proxycheck]` | Providers asked for the country, in order. See [providers](providers.md) |
 | `lookup.vpn-from` | `[proxycheck]` | Providers asked for the VPN check, in order: `proxycheck`, `iphub`, `ip-api`. `[]` for none; then the `vpn` and `proxy` rules must be off, and lookups are kept in memory only |
 | `lookup.proxycheck.base-url` | `https://proxycheck.io/v3/` | Change only for testing |
@@ -37,13 +39,15 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `storage.sqlite.file` | `data/origingate.db` | Inside the plugin folder |
 | `storage.mysql.*` | | See [storage](storage-and-privacy.md#mysql-and-mariadb) |
 | `bypass.permissions` | `[]` | Any of these skips every check |
-| `bypass.players` | `[]` | Names (any case) or UUIDs |
+| `bypass.players` | `[]` | Names (any case) or UUIDs. Anyone can claim them in offline mode; see [offline mode and proxies](#offline-mode-and-proxies) |
 | `bypass.addresses` | `[]` | IPs or CIDR ranges |
 | `rules.deny-addresses` | off | `list` of IPs or CIDR ranges, `bypass-permissions` |
+| `rules.deny-networks` | off | `asns` (AS numbers such as `AS64496`), `organisations` (text to look for in the network's provider, organisation, or VPN operator name, ignoring case, at least 3 characters), `bypass-permissions: [origingate.bypass.deny-networks]`. Works with every provider except `maxmind` |
 | `rules.vpn` | on | `bypass-permissions: [origingate.bypass.vpn]` |
 | `rules.proxy` | on | `allowed-countries` (codes), `bypass-permissions: [origingate.bypass.proxy]` |
+| `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
 | `rules.country` | off | `mode: allowlist` or `denylist`, `countries` (codes), `bypass-permissions: [origingate.bypass.country]` |
-| `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts |
+| `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts, and lookup problems (one message when it starts, one when it is over) |
 | `log-file` | `true` | Daily log files of kicks, bypasses, and lookup failures |
 | `log-file-keep-days` | `30` | 0 to 3650. Log files older than this are deleted. `0` keeps them forever |
 
@@ -81,6 +85,39 @@ lookup:
 
 The country comes from the local file, so proxycheck.io is only asked for the VPN check. If proxycheck.io fails, IPHub is asked.
 
+### Kick hosting networks and listed networks
+
+```yaml
+lookup:
+  vpn-from: [proxycheck]
+rules:
+  deny-networks:
+    enabled: true
+    asns: [AS64496]
+    organisations: ["Example Hosting"]
+    bypass-permissions: ["origingate.bypass.deny-networks"]
+  hosting:
+    enabled: true
+    bypass-permissions: ["origingate.bypass.hosting"]
+```
+
+Hosting and datacenter networks are where VPN services and bots rent their servers, so the hosting rule catches many that no provider flags as a VPN. It also catches players who play through a cloud desktop or a hosted VPN of their own; give them `origingate.bypass.hosting`. Try it with `dry-run: true` first.
+
+### Flood protection
+
+```yaml
+lookup:
+  max-lookups-per-minute: 120
+  on-budget-exceeded: deny
+```
+
+During a bot flood, every new address costs one provider lookup. With a limit, lookups over it are not sent, so the provider's daily quota lasts. A login over the limit follows `on-budget-exceeded`:
+
+- Not set (the default): the same as `on-lookup-failure`, so with `allow` those players get in unchecked, as they would when the provider is down.
+- `deny`: those players are kicked with the `lookup-failure` message and can join again once the flood is over. Players looked up within `storage.max-age-days` are still answered from memory or storage and are not affected. Use it as an attack mode while you are being flooded.
+
+Staff with an alert permission get one message when the limit is reached and one when it has room again, with how many addresses went unchecked. `origingate status` shows how much of the limit the last minute used.
+
 ### Country rules only, no web requests
 
 ```yaml
@@ -93,3 +130,19 @@ rules:
   proxy:
     enabled: false
 ```
+
+## Offline mode and proxies
+
+In offline mode, anyone can join with any name. The UUID is made from the name, and permission plugins such as LuckPerms load permissions by that UUID before any login plugin runs. So in offline mode, `bypass.players` and every bypass permission (global or per rule) can be claimed by anyone who picks a name that has one. Only `bypass.addresses` holds up.
+
+OriginGate logs a warning at startup and reload when it runs where names are not checked and any of those bypasses are set:
+
+| Where OriginGate runs | Warning |
+| --- | --- |
+| Online-mode server or proxy | No |
+| Offline-mode server or proxy | Yes |
+| Paper behind Velocity with modern forwarding (`proxies.velocity.enabled`, from an online-mode proxy) | No. The forwarded name and UUID are signed |
+| Spigot or Paper behind BungeeCord IP forwarding (`settings.bungeecord: true`) | Yes. Anyone who can reach the server's own port can fake the name, UUID, and IP address. It is only safe while the port accepts connections from the proxy alone |
+| Paper behind an offline-mode proxy (`online-mode: false` in Paper's proxy settings) | Yes |
+
+To silence it, remove the name, UUID, and permission bypasses (including the default `bypass-permissions` of each rule), or use online mode. Installing OriginGate on the proxy instead of the backends avoids the forwarding question entirely.

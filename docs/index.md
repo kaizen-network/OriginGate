@@ -15,6 +15,7 @@ OriginGate checks where each player connects from on Bukkit/Spigot/Paper, Bungee
 - Every rule is optional and has its own bypass permissions.
 - Dry-run mode shows what would happen without kicking anyone.
 - One console line per check, plus optional daily log files.
+- Staff alerts in chat when a lookup provider stops answering, and `origingate status` to see how lookups are doing.
 
 ## What gets checked
 
@@ -26,13 +27,15 @@ First, without looking anything up:
 
 Then the IP is looked up (from memory, storage, or the providers), and the rules are checked in this order:
 
-4. **vpn rule:** the IP belongs to a VPN.
-5. **proxy rule:** the IP is a proxy, from a country not in `allowed-countries`.
-6. **country rule:** the country is not on your allowlist (or is on your denylist).
+4. **deny-networks rule:** the IP's network (AS number or organisation) is on your list.
+5. **vpn rule:** the IP belongs to a VPN.
+6. **proxy rule:** the IP is a proxy, from a country not in `allowed-countries`.
+7. **hosting rule:** the IP is on a hosting or datacenter network.
+8. **country rule:** the country is not on your allowlist (or is on your denylist).
 
 The first rule that matches decides. A player with one of that rule's bypass permissions is let in and gets a short chat message. Everyone else is kicked with that rule's message from `messages.yml`.
 
-If the lookup fails or takes longer than `wait-millis` (5 seconds by default), `on-lookup-failure` decides: `allow` (default) or `deny`.
+If the lookup fails or takes longer than `wait-millis` (2.5 seconds in a new config), `on-lookup-failure` decides: `allow` (default) or `deny`.
 
 See [how it works](how-it-works.md) for details.
 

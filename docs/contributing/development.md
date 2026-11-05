@@ -12,6 +12,8 @@ On Linux or macOS, run `./gradlew build`. `build` contacts no remote database an
 
 Outputs are `platform-bukkit/build/libs/OriginGate-Bukkit-<version>.jar`, `platform-bungeecord/build/libs/OriginGate-BungeeCord-<version>.jar`, and `platform-velocity/build/libs/OriginGate-Velocity-<version>.jar`. Each bundles the shared core and its dependencies. See [dependency notices](../../THIRD_PARTY_NOTICES.md) for packaging details.
 
+The root `build.gradle.kts` keeps only 8 of sqlite-jdbc's 20 native libraries in every plugin JAR (Linux and musl Linux on x86_64 and aarch64, Windows and macOS on x86_64 and aarch64), which keeps each JAR under Hangar's 10 MB upload limit. `BundledSqlite.SUPPORTED` and the compatibility page list the same systems, and the artifact tests check both the list and the size.
+
 The version is set only in `gradle.properties`. The build writes it into the generated `BuildInfo` class, which the plugin descriptor and the probe also use.
 
 ## Project layout
@@ -37,7 +39,7 @@ Review new entries in `verification-metadata.xml` before committing. Do not rege
 
 ## GitHub Actions
 
-`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs. It uses Ubuntu 24.04, Temurin JDK 25 for builds, and JDK 8 for the packaged runtime check. It checks the probe scripts and docs, runs the build and tests, and keeps all three plugin JARs for 14 days and test reports for 7. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. Connection probes need separately supplied server JARs, so they are not part of CI.
+`.github/workflows/build.yml` runs on pushes and pull requests to `main` and on manual runs. It uses Ubuntu 24.04, Temurin JDK 25 for builds, and JDK 8 for the packaged runtime check. It checks the probe scripts and docs, runs the build and tests, and keeps all three plugin JARs for 14 days and test reports for 7. A second job starts a throwaway MariaDB 11.4 service container and runs the [remote database test](testing.md#remote-database-test) against it, so no secrets are needed. Actions are pinned to commit hashes, permissions are read-only, and checkout keeps no credentials. Connection probes need separately supplied server JARs, so they are not part of CI.
 
 ## Releasing
 

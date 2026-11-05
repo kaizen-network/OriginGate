@@ -25,9 +25,26 @@ The result takes the country, region, and city from the country answer, and the 
 
 Only proxycheck.io reports proxies separately from VPNs. The others set only the VPN flag.
 
+## Hosting networks
+
+The `hosting` rule uses the VPN answer, so it needs a provider in `vpn-from` that reports hosting networks separately:
+
+| Provider | Hosting network when |
+| --- | --- |
+| `proxycheck` | `network.type` is `Hosting` |
+| `ip-api` | `hosting: true` (OriginGate requests this field since 1.1.0) |
+| `iphub` | No separate flag. `block: 1` covers hosting, proxy, and VPN networks together, and OriginGate counts it as a VPN, so the `vpn` rule already kicks them |
+| `ipinfo`, `maxmind` | Not available (they have no VPN check either) |
+
+Lookups saved by OriginGate 1.0.0 from ip-api have no hosting flag until they are looked up again after `max-age-days`. Run `origingate cache clear all` to look everyone up again sooner.
+
+The `deny-networks` rule uses the ASN and the network names (provider, organisation, and VPN operator) from any answer, so it works with every provider except MaxMind country files.
+
 ## When a provider fails
 
 The next provider is asked when one fails, times out, refuses its key, is rate-limited, or has no data. When either job gets no answer, the lookup fails and `on-lookup-failure` applies. No new provider is asked once `wait-millis` has passed.
+
+Staff with an alert permission get one message when a provider is paused or fails 3 lookups in a row, and one when it answers again. See [alerts and status](how-it-works.md#alerts-and-status).
 
 A refused or rate-limited API key is skipped for 60 seconds. The provider itself is skipped for 60 seconds once all of its keys are refused (or right away when it has no keys).
 
@@ -39,7 +56,7 @@ OriginGate uses the v3 API (`https://proxycheck.io/v3/<ip>?key=<key>`), which re
 
 | OriginGate | v3 field |
 | --- | --- |
-| provider, organisation, asn, type | `network.provider`, `network.organisation`, `network.asn`, `network.type` |
+| provider, organisation, asn, type | `network.provider`, `network.organisation`, `network.asn`, `network.type` (`Hosting` feeds the `hosting` rule) |
 | country, country code, region, city | `location.country_name`, `location.country_code`, `location.region_name`, `location.city_name` |
 | vpn, proxy | `detections.vpn`, `detections.proxy` |
 | operator name | `operator.name` (`operator` is `null` when unknown) |
@@ -53,7 +70,7 @@ An unknown or wrong key is not refused by the API (it answers `"status": "ok"`),
 | Provider | Request | Country fields | VPN | Network fields |
 | --- | --- | --- | --- | --- |
 | IPHub | `https://v2.api.iphub.info/ip/<ip>`, key in `X-Key` | `countryCode`, `countryName` | `block: 1` (non-residential). `block: 2` is ignored, since IPHub says it may flag innocent users | `isp`, `asn` |
-| ip-api | `http://ip-api.com/json/<ip>`, or `https://pro.ip-api.com/json/<ip>?key=` with a key | `countryCode`, `country`, `regionName`, `city` | `proxy: true` (proxy, VPN, or Tor exit) | `isp`, `org`, `as` |
+| ip-api | `http://ip-api.com/json/<ip>`, or `https://pro.ip-api.com/json/<ip>?key=` with a key | `countryCode`, `country`, `regionName`, `city` | `proxy: true` (proxy, VPN, or Tor exit) | `isp`, `org`, `as`, and `hosting` (stored as the network type `Hosting`) |
 | IPinfo Lite | `https://api.ipinfo.io/lite/<ip>?token=` | `country_code`, `country` | | `asn`, `as_name` |
 
 ## MaxMind GeoLite2

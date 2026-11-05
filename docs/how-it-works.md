@@ -20,7 +20,7 @@ On Velocity, the check runs after permission plugins such as LuckPerms have load
 2. `deny-addresses`, when enabled.
 3. Private address skip (`lookup.skip-private-addresses`).
 4. Lookup, waiting at most `lookup.wait-millis`.
-5. `vpn`, `proxy`, `country`, when enabled.
+5. `deny-networks`, `vpn`, `proxy`, `hosting`, `country`, when enabled.
 
 The first rule that matches decides: kick, or let in through that rule's bypass permission. Later rules are not checked. For example, a player with the VPN bypass who uses a VPN from a country outside the allowlist is let in, because the vpn rule matched first.
 
@@ -33,16 +33,31 @@ A `bypass.addresses` entry wins over a `deny-addresses` entry.
 3. The [lookup providers](providers.md).
 
 - Only one request per IP runs at a time. Other logins from the same IP wait for it. `origingate check <ip> refresh` always makes its own request.
+- Answers are kept per address. An IPv6 answer that a rule acts on (deny-networks, VPN, proxy, hosting, or a country your country rule turns away) is also kept for the address's whole /64, so the next address in that /64 is turned away from memory without a new lookup. Home and mobile IPv6 users get at least a /64 and can switch addresses inside it at will. A clean answer is never shared this way, because some hosts split one /64 between many customers, and one customer's clean address must not let a neighbour in.
 - Lookups run on 4 worker threads with a queue of 256. When the queue is full, the lookup fails and `on-lookup-failure` applies.
+- A lookup still waiting in the queue when every login that asked for it has stopped waiting (after `wait-millis`) is dropped without asking a provider, so a burst of logins does not spend quota on answers nobody uses.
+- With `max-lookups-per-minute`, provider lookups over that many in 60 seconds are not sent, and the login follows `on-budget-exceeded`. Answers from memory and storage do not count.
 - A new result goes to the waiting login first and is saved afterwards, so a slow database does not hold the login.
 - When a storage read or save fails, storage is skipped for 60 seconds and lookups go straight to the providers. A dead database does not use up `wait-millis` on every login.
-- When no provider returns a country code, the lookup counts as failed and is not saved, since country rules need it. That IP is not asked again for 5 minutes, so a player reconnecting in a loop cannot drain your API quota. `refresh` and `cache clear` skip this pause.
+- When no provider returns a country code, the lookup counts as failed and is not saved, since country rules need it. That IP is not asked again for 5 minutes, so a player reconnecting in a loop cannot drain your API quota. `refresh` and `cache clear` skip this pause. The pause is per address, not per /64: a paused lookup fails, and with `on-lookup-failure: allow` that would let the rest of the /64 in unchecked.
 
 ## Failures and dry-run
 
 - `on-lookup-failure: allow` lets the player in when the lookup fails or times out. `deny` kicks them with the `lookup-failure` message.
+- A login over `max-lookups-per-minute` follows `on-budget-exceeded`, or `on-lookup-failure` when that is not set.
 - On reload, logins that already started finish with the previous settings.
 - `dry-run: true` runs everything and logs `WOULD-DENY` instead of kicking. No chat notices or staff alerts are sent in dry-run.
+
+## Alerts and status
+
+Staff with an alert permission get one chat message when lookups start failing, and one when they work again, so a long outage does not repeat itself:
+
+- a provider is paused after refusing a request (HTTP 401, 403, or 429, or a `denied` status, such as a used-up daily quota)
+- a provider fails 3 lookups in a row (timeouts or server errors). It is still asked on every lookup
+- an API key is refused while the provider's other keys still work
+- `max-lookups-per-minute` is reached
+
+The same messages are logged to the console as `Alert: ...`. After a reload, a provider that is still down is reported once more. `origingate status` shows the counters, the budget, and each provider's state at any time.
 
 ## Logging
 

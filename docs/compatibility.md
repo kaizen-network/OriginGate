@@ -21,7 +21,7 @@ order: 10
 | Velocity 3.4.0 build 563, Java 25 | All automated login checks pass: allowed join, VPN and proxy kicks, bypass, country rules, deny-addresses, dry-run, lookup failures, reload, API key rotation, commands, and log files |
 | Velocity-CTD 4.2.1 with LuckPerms and ConsentGate 0.2.0, real proxycheck.io API | Real Java joins: allowed, VPN let in with a bypass permission, VPN kicked without it, lookup reused from storage |
 
-MySQL and MariaDB storage has an automated test, but it has not yet been run against a real MySQL or MariaDB server. SQLite is fully tested.
+MySQL and MariaDB storage passes its automated test (table creation, quoted values, and concurrent writes from two storage instances) against MariaDB 11.4.13, and GitHub Actions runs it against a MariaDB 11.4 container. It has not been run against MySQL itself. SQLite is fully tested.
 
 ## Other plugins
 
@@ -46,5 +46,22 @@ Unpatched CraftBukkit 1.7.2 does not fire asynchronous pre-login in offline mode
 The new adapters have local permission-fixture tests. Live LuckPerms and Geyser/Floodgate combinations on these adapters have not yet been verified. The plugin compatibility results above were established on Velocity.
 
 Recent Paper versions warn that plugins listening to `PlayerLoginEvent` make the reconfiguration API unavailable. OriginGate uses that event for final permission checks, so plugins that require Paper reconfiguration need separate compatibility testing.
+
+## SQLite
+
+The plugin JARs include SQLite for these systems only:
+
+| System | Processors |
+| --- | --- |
+| Linux (glibc, most distributions) | x86_64, aarch64 |
+| Linux (musl, such as Alpine) | x86_64, aarch64 |
+| Windows | x86_64, aarch64 |
+| macOS | x86_64 (Intel), aarch64 (Apple silicon) |
+
+On any other system (32-bit, ARMv7, FreeBSD, and others), SQLite cannot start, and OriginGate logs an error that names these systems and does not check connections. Set `storage.type: mysql` to use MySQL or MariaDB there. The other systems were left out in 1.1.0 so that every JAR is under 10 MB.
+
+## Offline mode and forwarding
+
+OriginGate finds out at startup whether the server or proxy checks player names: Velocity and BungeeCord from their own `online-mode`, and Bukkit from `online-mode` plus Paper's proxy settings or Spigot's `settings.bungeecord`. Only Velocity modern forwarding from an online-mode proxy counts as safe on an offline-mode backend. See [offline mode and proxies](configuration.md#offline-mode-and-proxies).
 
 MaxMind uses reader 4.2.0 on Java 17 or newer and reader 2.1.0 on Java 8 through 16. The older reader lacks later decoder fixes. Use genuine MaxMind database files, and prefer Java 17 or newer when your server supports it.

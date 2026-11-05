@@ -18,7 +18,7 @@ OriginGate is only as good as the IP address it sees. After the first joins, com
 
 - **Proxy protection services** (TCP or DDoS shields in front of the proxy): the service usually passes the real address with PROXY protocol or its own plugin. That must happen before Velocity's `LoginEvent`. Otherwise every player shows the service's address.
 - **Bedrock players through Geyser and Floodgate:** they must show their own address, not the local address of Geyser. If they show a local address, `skip-private-addresses: true` lets them in without a check.
-- **Offline-mode login plugins:** UUIDs can differ from online-mode UUIDs, so prefer player names in `bypass.players`.
+- **Offline mode:** anyone can join with any name, so name, UUID, and permission bypasses can be claimed by anyone. Only `bypass.addresses` holds up. OriginGate warns at startup when it finds this; see [offline mode and proxies](configuration.md#offline-mode-and-proxies).
 
 ## Check permissions
 
@@ -31,6 +31,8 @@ Plugins that deny logins at `LoginEvent` with a higher priority (ban plugins, fo
 ## Settings to review
 
 - `lookup.proxycheck.api-keys`: add your keys. Watch usage on the proxycheck.io dashboard, since an invalid key is not reported as an error.
-- `lookup.on-lookup-failure` and `lookup.wait-millis`: how long a login may wait, and what happens when the lookup providers are down.
+- `lookup.on-lookup-failure` and `lookup.wait-millis`: how long a login may wait, and what happens when the lookup providers are down. Give `origingate.alerts` to staff so they hear when lookups stop working, and run `origingate status` to see the providers' state.
+- `lookup.max-lookups-per-minute`: a limit keeps a bot flood from using up your daily lookups. See [flood protection](configuration.md#flood-protection).
+- `rules.hosting` and `rules.deny-networks`: catch VPNs and bots on rented servers that providers do not flag. Try them in dry-run first.
 - `storage`: for several proxies, use one MySQL/MariaDB database, so each IP is looked up once for all of them.
 - `messages.yml`: add your support link or other text to the kick screens.

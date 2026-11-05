@@ -12,12 +12,12 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `ip` | `VARCHAR(45)` primary key | Canonical text form, for example `2001:db8:0:0:0:0:0:1` |
+| `ip` | `VARCHAR(45)` primary key | Canonical text form, for example `2001:db8:0:0:0:0:0:1`. One row per address, also for IPv6 |
 | `provider`, `organisation`, `operator_name`, `city`, `region`, `country` | `VARCHAR(255)` | `NULL` when unknown |
 | `country_code` | `CHAR(2)` | |
 | `asn` | `VARCHAR(32)` | |
 | `vpn`, `proxy` | `BOOLEAN` | |
-| `type` | `VARCHAR(64)` | Network type (proxycheck.io only) |
+| `type` | `VARCHAR(64)` | Network type from proxycheck.io, or `Hosting` from ip-api's hosting flag |
 | `checked_at` | `BIGINT` | Unix seconds, indexed |
 
 Saves replace the previous row for the same IP in one step, in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.

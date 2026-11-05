@@ -4,12 +4,13 @@ Kick players who connect through a VPN or proxy, or from a country you do not al
 
 ## Features
 
-- Rules for VPNs, proxies (with allowed countries), country allowlists or denylists, and IP addresses or ranges you list.
+- Rules for VPNs, proxies (with allowed countries), hosting and datacenter networks, country allowlists or denylists, networks by AS number or name, and IP addresses or ranges you list.
 - Every rule has its own bypass permissions, plus a global bypass by player, IP, or permission.
 - IP data from proxycheck.io, IPHub, ip-api.com, IPinfo, or a local MaxMind GeoLite2 file. Combine them, with fallback to the next one.
 - Each IP is looked up at most once every 30 days by default, saved in SQLite or MySQL/MariaDB.
 - Dry-run mode shows who would be kicked, without kicking anyone.
-- One console line per check, daily log files, and staff alerts in chat.
+- One console line per check, daily log files, and staff alerts in chat, including when a lookup provider stops answering. `origingate status` shows how lookups are doing.
+- A lookups-per-minute limit keeps bot floods from using up your provider's daily quota.
 - On Velocity, works with LuckPerms, ban plugins, Geyser, and [ConsentGate](https://modrinth.com/plugin/consentgate).
 
 ## Requirements

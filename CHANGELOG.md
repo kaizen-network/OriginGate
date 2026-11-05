@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 (unreleased)
+
+### Upgrading from 1.0.0
+
+Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working unchanged and behave as before: every new setting is optional and off when missing, and missing new messages use the bundled text. To use the new features, copy the new settings from the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml). On an offline-mode server, or a backend behind BungeeCord IP forwarding, a new startup warning may name bypasses that anyone can claim; see [offline mode and proxies](docs/configuration.md#offline-mode-and-proxies). Saved ip-api lookups have no hosting flag until they are looked up again; run `origingate cache clear all` if you turn on the hosting rule with ip-api.
+
+### Added
+
+- `hosting` rule: kicks hosting and datacenter networks, where many VPNs and bots run without being flagged. Uses proxycheck.io's network type, or ip-api's `hosting` flag, which is now requested. Off by default. See [providers](docs/providers.md#hosting-networks).
+- `deny-networks` rule: kicks networks you list by AS number or by text in the provider, organisation, or VPN operator name. Off by default.
+- `lookup.max-lookups-per-minute`: a limit on provider lookups, so a bot flood cannot use up a provider's daily quota. Off by default. Logins over it follow the new optional `lookup.on-budget-exceeded` (`allow` or `deny`), or `on-lookup-failure` when that is not set. See [flood protection](docs/configuration.md#flood-protection).
+- Staff with `origingate.alerts` get one chat message when a lookup provider is paused (a refused key, a rate limit, or a used-up daily quota), fails 3 lookups in a row, or has one of several API keys refused, and when the lookup budget is reached, plus one message when that is over. New `alerts.lookup-problem` and `alerts.lookup-recovered` in `messages.yml`.
+- `origingate status` (permission `origingate.command.status`): lookups since start by source, the cache hit rate, failures, dropped lookups, the budget, and each provider's state, requests today, and paused API keys.
+- A warning at startup and reload when name, UUID, or permission bypasses are set where anyone can claim them: offline mode, or a backend behind BungeeCord IP forwarding. Velocity modern forwarding from an online-mode proxy counts as safe.
+
+### Changed
+
+- New installs wait at most 2500 ms for a lookup (`wait-millis`), down from 5000. New installs only: an existing `config.yml` keeps its value.
+- A lookup still queued when every login waiting for it has stopped waiting is dropped without asking a provider, so a burst of logins no longer spends quota on answers nobody uses.
+- An IPv6 answer that a rule acts on now also covers the rest of its /64, so a player switching addresses inside a flagged /64 is turned away from memory without a new lookup. Clean answers stay per address, since hosts may split one /64 between customers.
+- The plugin JARs include SQLite only for Linux (x86_64 and aarch64, glibc and musl), Windows (x86_64 and aarch64), and macOS (x86_64 and aarch64), which takes every JAR from about 14 MB to under 8 MB, below Hangar's upload limit. On other systems, use MySQL or MariaDB; the startup error says so. See [compatibility](docs/compatibility.md#sqlite).
+- MySQL and MariaDB storage is tested against a real MariaDB 11.4 server, and GitHub Actions runs that test against a MariaDB container.
+- The Modrinth listing names Purpur for the Bukkit JAR and Waterfall for the BungeeCord JAR.
+
+### Fixed
+
+- Velocity: a `bypass-notice` that cannot be rendered no longer stops the staff alert for that bypass.
+
 ## 1.0.0 (2026-11-05)
 
 ### Added
