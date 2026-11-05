@@ -86,3 +86,5 @@ Set `enabled` to false in the bStats file, then restart the server or proxy:
 | Velocity | `plugins/bStats/config.txt` | `enabled=false` |
 
 This file is shared, so it turns off bStats for every plugin on that server, and for the server software too if it uses bStats.
+
+On Velocity, keep the `server-uuid` line. bStats replaces a `config.txt` without it, and turns bStats back on.
