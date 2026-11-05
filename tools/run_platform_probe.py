@@ -108,8 +108,11 @@ public class RoutingProbe extends Plugin implements Listener {
  }
 }'''
     (scratch/'RoutingProbe.java').write_text(source)
-    cp=str(args.server)
-    subprocess.run(['javac','--release','11','-cp',cp,str(scratch/'RoutingProbe.java')],check=True,capture_output=True)
+    cp=[str(args.server)]
+    with zipfile.ZipFile(args.server) as z:
+        # Current BungeeCord builds nest their API jars under META-INF/libraries/; older builds and Waterfall do not.
+        cp+=[z.extract(n,scratch) for n in z.namelist() if n.startswith('META-INF/libraries/bungeecord-') and n.endswith('.jar')]
+    subprocess.run(['javac','--release','11','-cp',os.pathsep.join(cp),str(scratch/'RoutingProbe.java')],check=True,capture_output=True)
     with zipfile.ZipFile(RUN/'plugins/RoutingProbe.jar','w') as z:
         z.write(scratch/'RoutingProbe.class','RoutingProbe.class')
         z.writestr('bungee.yml','name: RoutingProbe\nmain: RoutingProbe\nversion: 1\n')
