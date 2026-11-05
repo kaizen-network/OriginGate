@@ -31,7 +31,7 @@ With JDK 8 installed, run `gradlew :platform-bukkit:legacyRuntimeProbe` to exerc
 
 ## Bukkit and BungeeCord connection probes
 
-`tools/run_platform_probe.py` copies a supplied server JAR into an isolated `.run/integration-<platform>` folder, binds to loopback, installs test-only permission/routing plugins, turns off bStats in `plugins/bStats/config.yml`, and checks allow/deny, bypasses, failures, dry-run, reload, and timeout behavior. It stops its own server afterwards. Use a disposable local server JAR, Python 3.11+, and JDK 25's `javac` on PATH. Select the server's Java runtime with `--java`.
+`tools/run_platform_probe.py` copies a supplied server JAR into an isolated `.run/integration-<platform>` folder, binds to loopback, installs test-only permission/routing plugins, turns off bStats in `plugins/bStats/config.yml` (and opts out of Spigot's `plugins/PluginMetrics`), and checks allow/deny, bypasses, failures, dry-run, reload, and timeout behavior. BungeeCord sends its own statistics to `mcstats.spigotmc.org` with no setting to turn that off, so the probe starts it with `https.proxyHost` pointing at a local socket that drops every connection. It stops its own server afterwards. Use a disposable local server JAR, Python 3.11+, and JDK 25's `javac` on PATH. Select the server's Java runtime with `--java`.
 
 ```powershell
 python tools/run_platform_probe.py bukkit --server path/to/craftbukkit.jar --bukkit-api path/to/bukkit-1.7.2-R0.3.jar --java path/to/java8/bin/java
@@ -40,6 +40,8 @@ python tools/run_platform_probe.py paper --server path/to/paper.jar --bukkit-api
 ```
 
 Paper and newer Spigot tests use a local `minecraft-protocol` Node dependency through `--modules`. Choose a compatible `--client-version`. Paper 1.21.7 and 1.21.8 share a protocol. For simultaneous test servers, choose distinct `--port` and `--run-name` values. The Bungee probe also uses the next port for a dummy backend and checks that another plugin cannot route a denied player there.
+
+Both probes also check the 1.1.0 changes: the offline-mode warning at startup; the unchanged 1.0.0 `config.yml` and `messages.yml` loading; the hosting rule; the lookup budget with `on-lookup-failure` and `on-budget-exceeded`; one alert after 3 failures in a row and one recovery; one alert for a provider paused by HTTP 429, no request while it is paused, and one recovery after the 60-second pause; `origingate status`; and 8 logins at once from 8 loopback addresses (`127.0.0.10` to `127.0.0.17`), where 4 lookups run and the 4 queued past their login's wait are dropped without a request. On Paper, a second client (`tools/platform_staff_client.cjs`) stays online with `origingate.alerts` and must receive the pause and recovery alerts in chat, and the server is restarted twice: behind Velocity modern forwarding there is no warning, behind BungeeCord IP forwarding there is one. The pause check waits 61 seconds.
 
 ## Docs check
 
@@ -102,7 +104,7 @@ Then:
 python tools/run_velocity_probe.py
 ```
 
-The runner refuses a proxy not bound to `127.0.0.1:25590`. It replaces the JARs in `.run/velocity/plugins`, writes a probe `config.yml` with `skip-private-addresses: false`, turns off bStats in `plugins/bStats/config.txt`, starts the proxy, runs the checks, and stops it. A small Python client logs in with Java protocol 772 (1.21.8), and a listener on port 25591 stands in for the backend. Bypass permissions come from the test-only permission plugin (`plugins/origingate-probe-permissions/permissions.txt`, one `name permission` per line).
+`--port` sets another proxy port (the backend listener uses the next one); `velocity.toml` must match. The runner refuses a proxy not bound to `127.0.0.1:25590` (or the `--port` given). It replaces the JARs in `.run/velocity/plugins`, writes a probe `config.yml` with `skip-private-addresses: false`, turns off bStats in `plugins/bStats/config.txt`, starts the proxy, runs the checks, and stops it. A small Python client logs in with Java protocol 772 (1.21.8), and a listener on port 25591 stands in for the backend. Bypass permissions come from the test-only permission plugin (`plugins/origingate-probe-permissions/permissions.txt`, one `name permission` per line).
 
 Checks:
 
@@ -121,6 +123,13 @@ Checks:
 13. API keys are sent as a proper `key` parameter and used in turn.
 14. The check command works, and kicks are written to the daily log file.
 15. `console-log: kicks` prints a kick but not a normal join.
+16. The offline-mode warning appears at startup.
+17. The unchanged 1.0.0 `config.yml` and `messages.yml` load, and a private address joins without a lookup.
+18. The hosting rule kicks a stubbed `Hosting` network and lets a residential one in.
+19. Over `max-lookups-per-minute`, a login follows `on-lookup-failure`, or `on-budget-exceeded: deny` when set, with one alert.
+20. 3 failed lookups in a row send one alert, and the next answer one recovery alert.
+21. A provider refused with HTTP 429 sends one alert, is not asked while paused, and sends one recovery alert after the 60-second pause.
+22. 8 logins at once from 8 loopback addresses run 4 lookups and drop the 4 queued past their login's wait.
 
 ### ConsentGate compatibility run
 

@@ -30,8 +30,9 @@ PERMISSIONS = PLUGINS / "origingate-probe-permissions" / "permissions.txt"
 VERSION = next(line.split("=", 1)[1].strip() for line in (PROJECT / "gradle.properties").read_text().splitlines()
                if line.startswith("version="))
 PROTOCOL = 772  # Java 1.21.8
-PROXY_PORT = 25590
+PROXY_PORT = 25590  # --port changes it; the backend listener uses the next port
 BACKEND_PORT = 25591
+UPGRADE = PROJECT / "core" / "src" / "test" / "resources" / "upgrade"
 
 
 # ---------------------------------------------------------------- Minecraft login client
@@ -82,10 +83,12 @@ def flatten(component):
 class Client:
     """Offline-mode login. Compression must be off on the test proxy."""
 
-    def __init__(self, name):
+    def __init__(self, name, source=None):
+        """{source} is a loopback address such as 127.0.0.5, so one machine can log in from several IPs."""
         self.name = name
         offline = uuid.UUID(bytes=hashlib.md5(("OfflinePlayer:" + name).encode()).digest(), version=3)
-        self.sock = socket.create_connection(("127.0.0.1", PROXY_PORT), timeout=20)
+        self.sock = socket.create_connection(("127.0.0.1", PROXY_PORT), timeout=20,
+                                             source_address=(source, 0) if source else None)
         self.send(0, varint(PROTOCOL) + string("localhost") + struct.pack(">H", PROXY_PORT) + varint(2))
         self.send(0, string(name) + offline.bytes)
 
@@ -160,6 +163,9 @@ class Stub:
                 if profile["kind"] == "error":
                     self.answer(500, {"status": "error", "message": "stub failure"})
                     return
+                if profile["kind"] == "refuse":
+                    self.answer(429, {"status": "denied", "message": "stub daily limit reached"})
+                    return
                 ip = self.path.split("?")[0].rsplit("/", 1)[-1]
                 self.answer(200, stub.body(ip, profile["kind"]))
 
@@ -186,10 +192,11 @@ class Stub:
         country = {"foreign": ("Germany", "DE", "Frankfurt am Main")}.get(kind, ("Canada", "CA", "Toronto"))
         return {"status": "ok", ip: {
             "network": {"asn": "AS64500", "range": "127.0.0.0/8", "hostname": None, "provider": "Probe Hosting",
-                        "organisation": "Probe Org", "type": "Hosting" if kind in ("vpn", "proxy") else "Residential"},
+                        "organisation": "Probe Org", "type": "Hosting" if kind in ("vpn", "proxy", "hosting") else "Residential"},
             "location": {"country_name": country[0], "country_code": country[1], "region_name": "Probe Region",
                          "city_name": country[2]},
-            "detections": {"proxy": kind == "proxy", "vpn": kind == "vpn", "tor": False, "hosting": kind in ("vpn", "proxy")},
+            "detections": {"proxy": kind == "proxy", "vpn": kind == "vpn", "tor": False,
+                           "hosting": kind in ("vpn", "proxy", "hosting")},
             "operator": {"name": "Probe VPN Operator"} if kind == "vpn" else None,
         }, "query_time": 1}
 
@@ -210,7 +217,7 @@ lookup:
   skip-private-addresses: false
   on-lookup-failure: {failure}
   wait-millis: {wait}
-  proxycheck:
+{extra_lookup}  proxycheck:
     base-url: "http://127.0.0.1:{port}/v3/"
     api-keys: [probe-key-1, probe-key-2]
     request-timeout-millis: {request_timeout}
@@ -242,7 +249,7 @@ rules:
     mode: allowlist
     countries: [CA]
     bypass-permissions: ["origingate.bypass.country"]
-alerts:
+{extra_rules}alerts:
   permissions: ["origingate.alerts"]
 log-file: true
 log-file-keep-days: 30
@@ -301,11 +308,11 @@ class Probe:
         self.passed = 0
 
     def write_config(self, dry_run=False, failure="allow", wait=3000, request_timeout=2500, deny=False, country=False,
-                     console_log="all", raw=None):
+                     console_log="all", raw=None, extra_lookup="", extra_rules=""):
         text = raw if raw is not None else CONFIG.format(
             dry_run=str(dry_run).lower(), failure=failure, wait=wait, request_timeout=request_timeout,
             port=self.stub.port, fixture=self.fixture, deny=str(deny).lower(), country=str(country).lower(),
-            console_log=console_log)
+            console_log=console_log, extra_lookup=extra_lookup, extra_rules=extra_rules)
         (DATA / "config.yml").write_text(text, encoding="utf-8")
 
     def log_text(self):
@@ -486,7 +493,7 @@ def run(probe, backend, consentgate):
 
     probe.write_config(raw=CONFIG.replace("wait-millis: {wait}", "wait-millis: 5").format(
         dry_run="false", failure="deny", request_timeout=1000, port=stub.port, fixture=probe.fixture, deny="false",
-        country="false", console_log="all"))
+        country="false", console_log="all", extra_lookup="", extra_rules=""))
     probe.command("origingate reload", "Reload failed, the previous settings stay active")
     probe.fresh("error")
     expect_kick(backend, "ProbeKeepsOld", "could not be checked")
@@ -526,11 +533,147 @@ def run(probe, backend, consentgate):
     probe.ok("console-log: kicks prints kicks only")
 
 
+HOSTING_RULE = """  hosting:
+    enabled: true
+    bypass-permissions: ["origingate.bypass.hosting"]
+"""
+
+
+def count(text, needle):
+    return text.count(needle)
+
+
+def run_110(probe, backend):
+    """Checks for the 1.1.0 changes. The proxy runs in offline mode, as the probe needs."""
+    stub = probe.stub
+
+    assert "This server or proxy runs in offline mode" in probe.log_text(), "no offline-mode warning at startup"
+    probe.ok("offline-mode warning at startup names the bypasses anyone can claim")
+
+    messages = DATA / "messages.yml"
+    current_messages = messages.read_text(encoding="utf-8")
+    try:
+        shutil.copyfile(UPGRADE / "config-1.0.0.yml", DATA / "config.yml")
+        shutil.copyfile(UPGRADE / "messages-1.0.0.yml", messages)
+        requests = len(stub.requests)
+        probe.command("origingate reload", "OriginGate reloaded.")
+        expect_join(backend, "ProbeUpgrade")
+        assert len(stub.requests) == requests, "the 1.0.0 default config skips private addresses, so no lookup"
+        status = probe.command("origingate status", "On lookup failure:")
+        assert "Budget: no limit" in status and "over the budget: allow" in status, status
+        probe.ok("unchanged 1.0.0 config.yml and messages.yml load and let a private address in without a lookup")
+    finally:
+        messages.write_text(current_messages, encoding="utf-8")
+
+    probe.write_config(extra_rules=HOSTING_RULE)
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.fresh("hosting")
+    expect_kick(backend, "ProbeHosting", "hosting or datacenter networks are not allowed")
+    probe.fresh("clean")
+    expect_join(backend, "ProbeResidential")
+    probe.ok("hosting rule kicks a stubbed Hosting network and lets a residential one in")
+
+    offset = len(probe.log_text())
+    probe.write_config(extra_lookup="  max-lookups-per-minute: 1\n")
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.fresh("clean")
+    expect_join(backend, "ProbeBudgetOne")
+    probe.fresh("clean")
+    requests = len(stub.requests)
+    expect_join(backend, "ProbeBudgetTwo")
+    probe.wait_log("ALLOW rule=lookup-failure player=ProbeBudgetTwo", offset=offset)
+    assert len(stub.requests) == requests, "a login over the budget must not reach the provider"
+    probe.wait_log("Alert: The lookup budget of 1 lookup per minute is used up", offset=offset)
+    probe.write_config(extra_lookup="  max-lookups-per-minute: 1\n  on-budget-exceeded: deny\n")
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.fresh("clean")
+    expect_join(backend, "ProbeBudgetThree")
+    probe.fresh("clean")
+    expect_kick(backend, "ProbeBudgetFour", "could not be checked")
+    status = probe.command("origingate status", "On lookup failure:")
+    assert "Budget: 1 of 1 lookups in the last minute" in status and "over the budget: deny" in status, status
+    probe.ok("over the budget follows on-lookup-failure (allow), or on-budget-exceeded: deny when set, with one alert")
+
+    probe.write_config()
+    probe.command("origingate reload", "OriginGate reloaded.")
+    offset = len(probe.log_text())
+    probe.fresh("error")
+    for name in ("ProbeFailOne", "ProbeFailTwo", "ProbeFailThree", "ProbeFailFour"):
+        expect_join(backend, name)
+    probe.wait_log("Alert: proxycheck failed 3 lookups in a row", offset=offset)
+    probe.fresh("clean")
+    expect_join(backend, "ProbeFailBack")
+    probe.wait_log("Alert: proxycheck answers lookups again.", offset=offset)
+    text = probe.log_text()[offset:]
+    assert count(text, "Alert: proxycheck failed 3 lookups in a row") == 1, text
+    assert count(text, "Alert: proxycheck answers lookups again.") == 1, text
+    probe.ok("3 failed lookups in a row send one alert, and the next answer one recovery alert")
+
+    offset = len(probe.log_text())
+    probe.fresh("refuse")
+    expect_join(backend, "ProbePaused")
+    probe.wait_log("Alert: proxycheck refused the request", offset=offset)
+    requests = len(stub.requests)
+    expect_join(backend, "ProbeStillPaused")
+    assert len(stub.requests) == requests, "a paused provider must not be asked"
+    status = probe.command("origingate status", "On lookup failure:")
+    assert "proxycheck: paused for" in status and "API key 1: refused" in status and "API key 2: refused" in status, status
+    time.sleep(61)
+    probe.fresh("clean")
+    expect_join(backend, "ProbeResumed")
+    probe.wait_log("Alert: proxycheck answers lookups again.", offset=offset)
+    text = probe.log_text()[offset:]
+    assert count(text, "Alert: proxycheck refused the request") == 1, text
+    assert count(text, "Alert: proxycheck answers lookups again.") == 1, text
+    assert "Alert: proxycheck.io refused API key" not in text, "keys refused together send no key alert of their own"
+    status = probe.command("origingate status", "On lookup failure:")
+    assert "proxycheck: ok" in status, status
+    probe.ok("a paused provider sends one alert, is not asked while paused, and sends one recovery alert after the pause")
+
+    probe.write_config(wait=1000, request_timeout=3000)
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.fresh("clean", delay=2.5)
+    requests = len(stub.requests)
+    outcomes = []
+
+    def login(index):
+        client = Client(f"ProbeFlood{index}", source=f"127.0.0.{10 + index}")
+        try:
+            outcomes.append(client.login()[0])
+        finally:
+            client.close()
+
+    threads = [threading.Thread(target=login, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(20)
+    time.sleep(4)
+    assert outcomes == ["joined"] * 8, outcomes
+    sent = len(stub.requests) - requests
+    status = probe.command("origingate status", "On lookup failure:")
+    assert sent == 4, f"{sent} provider requests for 8 addresses with 4 workers; the queued 4 should have been dropped"
+    assert "4 dropped after every login stopped waiting" in status, status
+    # The 8 logins were let in, so the proxy connected each to the backend; clear those connections.
+    backend.settimeout(0.5)
+    while True:
+        try:
+            connection, _ = backend.accept()
+            connection.close()
+        except (TimeoutError, OSError):
+            break
+    probe.ok("8 addresses at once with 4 workers: 4 lookups ran, the 4 queued past their login's wait were dropped unsent")
+    print(status, flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--consentgate", type=pathlib.Path, help="ConsentGate Velocity JAR for the compatibility run")
     parser.add_argument("--packetevents", type=pathlib.Path, help="PacketEvents Velocity JAR, required by ConsentGate")
+    parser.add_argument("--port", type=int, default=25590, help="Proxy port in velocity.toml; the backend listener uses the next one")
     args = parser.parse_args()
+    global PROXY_PORT, BACKEND_PORT
+    PROXY_PORT, BACKEND_PORT = args.port, args.port + 1
     if bool(args.consentgate) != bool(args.packetevents):
         parser.error("--consentgate and --packetevents go together")
 
@@ -580,6 +723,8 @@ def main():
             probe.start()
             probe.wait_log("OriginGate is running with sqlite storage", seconds=30)
             run(probe, backend, consentgate)
+            if not consentgate:
+                run_110(probe, backend)
         print(f"All {probe.passed} probe checks passed.", flush=True)
     finally:
         probe.stop()

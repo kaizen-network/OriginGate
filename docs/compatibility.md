@@ -19,6 +19,7 @@ order: 10
 | BungeeCord builds 2107 and 2111, Java 21 | Local login checks pass; denied players never reach the test backend. Includes permission bypass, failure policies, dry-run, reload, and timeout. |
 | Waterfall 1.21 build 615, Java 21 | The same local login checks as BungeeCord pass. |
 | Velocity 3.4.0 build 563, Java 25 | All automated login checks pass: allowed join, VPN and proxy kicks, bypass, country rules, deny-addresses, dry-run, lookup failures, reload, API key rotation, commands, and log files |
+| OriginGate 1.1.0 on Velocity 3.4.0 build 563 (Java 25), Paper 1.21.8 build 60 (Java 21), and BungeeCord build 2111 (Java 21) | All earlier checks, plus: an unchanged 1.0.0 `config.yml` and `messages.yml`, the hosting rule, the lookup budget with both failure settings, provider alerts and recovery (received in game by a staff client on Paper), `origingate status`, dropped lookups after 8 logins at once, and the offline-mode warning (none on Paper behind Velocity modern forwarding, shown behind BungeeCord IP forwarding) |
 | Velocity-CTD 4.2.1 with LuckPerms and ConsentGate 0.2.0, real proxycheck.io API | Real Java joins: allowed, VPN let in with a bypass permission, VPN kicked without it, lookup reused from storage |
 
 MySQL and MariaDB storage passes its automated test (table creation, quoted values, and concurrent writes from two storage instances) against MariaDB 11.4.13, and GitHub Actions runs it against a MariaDB 11.4 container. It has not been run against MySQL itself. SQLite is fully tested.
