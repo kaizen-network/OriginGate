@@ -24,7 +24,7 @@ Saves replace the previous row for the same IP in one step, in both SQLite and M
 
 ## SQLite
 
-The default. The file is `plugins/origingate/data/origingate.db`. Nothing to set up. SQLite runs on the systems listed under [compatibility](compatibility.md#sqlite); elsewhere, lookups are kept in memory only until you switch to MySQL or MariaDB.
+The default. The file is `plugins/origingate/data/origingate.db`. Nothing to set up. SQLite runs on the systems listed under [compatibility](compatibility.md#sqlite); elsewhere, lookups are kept in memory only until you switch to MySQL or MariaDB. The same happens when the file cannot be opened (damaged, locked by another program, or a folder that cannot be written): connections are still checked, an error is logged, and `origingate reload` tries the file again.
 
 ## MySQL and MariaDB
 

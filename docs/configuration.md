@@ -140,7 +140,7 @@ In offline mode, anyone can join with any name. The UUID is made from the name, 
 OriginGate tells you in two ways where names are not checked (offline mode, an offline-mode proxy, or BungeeCord IP forwarding):
 
 - At startup and reload, a warning when you set `bypass.players` or `bypass.permissions`. The per-rule `bypass-permissions` in the default config do not count, since nobody holds them until you grant them.
-- When a player actually gets in through `bypass.players`, `bypass.permissions`, or a rule's bypass permission, the log line ends with `caution="anyone can claim this name in offline mode"`, and the staff alert for a rule bypass carries the same note.
+- When a player gets in through a rule's bypass permission, the `BYPASS` log line ends with `caution="anyone can claim this name in offline mode"`, and the staff alert carries the same note. Global bypasses (`bypass.players` and `bypass.permissions`) are covered by the startup warning; their `ALLOW` lines carry the caution too, but only show with `console-log: all`.
 
 | Where OriginGate runs | Startup warning |
 | --- | --- |
