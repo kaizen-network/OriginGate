@@ -80,7 +80,8 @@ final class IsolatedDrivers {
     private static ClassLoader loader() throws Exception {
         URL location = IsolatedDrivers.class.getProtectionDomain().getCodeSource().getLocation();
         Path jar = Paths.get(location.toURI());
-        if (!Files.isRegularFile(jar)) return null;
+        // A missing JAR (renamed or deleted while running) must fail here, not fall back to loading without isolation.
+        if (Files.isDirectory(jar)) return null;
         Map<String, URL> services = services(jar);
         String mariadbPackage = MARIADB.substring(0, MARIADB.lastIndexOf('.') + 1);
         return new URLClassLoader(new URL[] {location}, IsolatedDrivers.class.getClassLoader()) {

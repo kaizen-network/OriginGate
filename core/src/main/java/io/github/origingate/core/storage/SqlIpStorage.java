@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.ServiceConfigurationError;
 
 /**
  * Lookups saved in the {@code origingate_ip_cache} table, in SQLite or MySQL/MariaDB.
@@ -55,6 +56,9 @@ public final class SqlIpStorage implements IpStorage {
         } catch (SQLException ex) {
             if (allowUnreachable) return storage;
             throw ex;
+        } catch (ServiceConfigurationError | LinkageError ex) {
+            if (allowUnreachable) return storage;
+            throw new SQLException("The database driver could not be loaded: " + ex, ex);
         }
         try (Connection opened = connection) {
             storage.setup(connection);
