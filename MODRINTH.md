@@ -1,4 +1,4 @@
-![OriginGate: VPN, proxy, and country checks at login](https://kaizenmc.id/api/software/assets/origingate/docs/images/banner.webp)
+![OriginGate: VPN, proxy, and country checks at login](https://raw.githubusercontent.com/kaizen-network/OriginGate/main/docs/images/banner.webp)
 
 Kick players who connect through a VPN or proxy, or from a country you do not allow. OriginGate runs on Bukkit, Spigot, Paper, Purpur, BungeeCord, Waterfall, and Velocity, and the check finishes before a player enters the world or reaches a backend server.
 
