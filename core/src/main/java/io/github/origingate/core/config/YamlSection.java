@@ -42,7 +42,7 @@ final class YamlSection {
 
     /** A file bundled in the plugin JAR, such as the default messages.yml. */
     static YamlSection resource(String name) throws ConfigException {
-        try (InputStream input = YamlSection.class.getResourceAsStream("/" + name)) {
+        try (InputStream input = ConfigLoader.bundled(name)) {
             if (input == null) throw new ConfigException("Missing bundled " + name);
             return parse(input, name);
         } catch (IOException | RuntimeException ex) {

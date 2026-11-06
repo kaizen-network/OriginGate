@@ -83,7 +83,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         for (String name : new String[] {"config.yml", "messages.yml"}) {
             Path target = dataDirectory.resolve(name);
             if (Files.exists(target)) continue;
-            try (InputStream input = OriginGateRuntime.class.getResourceAsStream("/" + name)) {
+            try (InputStream input = ConfigLoader.bundled(name)) {
                 if (input == null) throw new IOException("Missing bundled " + name);
                 Files.copy(input, target);
             }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 (unreleased)
+
+### Fixed
+
+- Renaming, deleting, or replacing the OriginGate JAR while the server runs no longer breaks lookups. The MySQL and MariaDB driver opened the JAR again for every new database connection, so once the file was gone every lookup failed, logins followed `on-lookup-failure` without a check, and `origingate reload` and `origingate cache clear` failed. The database drivers now load what they need at startup, and the default `config.yml` and `messages.yml` are kept in memory, so lookups, storage, and reload keep working until the next restart. Switching `storage.type` to `sqlite` with a reload while the JAR is gone still needs a restart; until then lookups are kept in memory only.
+- A database driver error that is not a normal SQL error now pauses storage for 60 seconds and asks the lookup providers, like other storage errors, instead of failing the whole lookup. A reload that hits one now fails with a message and keeps the previous settings.
+- The bundled MariaDB driver is no longer added to Java's shared driver list, where another plugin could pick it up and fail along with it.
+
 ## 1.1.0 (2026-11-06)
 
 ### Upgrading from 1.0.0

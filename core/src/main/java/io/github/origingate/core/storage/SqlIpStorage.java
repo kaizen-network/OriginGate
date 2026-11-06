@@ -73,7 +73,7 @@ public final class SqlIpStorage implements IpStorage {
         return open(() -> {
             Connection connection;
             try {
-                connection = BundledSqlite.driver().connect(url, new Properties());
+                connection = IsolatedDrivers.sqlite().connect(url, new Properties());
             } catch (SQLException ex) {
                 throw BundledSqlite.explain(ex);
             } catch (LinkageError ex) {
@@ -110,7 +110,7 @@ public final class SqlIpStorage implements IpStorage {
         properties.setProperty("allowLocalInfile", "false");
         properties.setProperty("allowMultiQueries", "false");
         properties.setProperty("maxQuerySizeToLog", "0");
-        Connection connection = new org.mariadb.jdbc.Driver().connect(
+        Connection connection = IsolatedDrivers.mariadb().connect(
                 "jdbc:mariadb://" + config.host() + ":" + config.port() + "/" + config.database(), properties);
         if (connection == null) throw new SQLException("The MariaDB driver did not accept the connection settings");
         return connection;

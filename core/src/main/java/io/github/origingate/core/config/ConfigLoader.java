@@ -19,20 +19,43 @@ import io.github.origingate.core.config.OriginGateConfig.Rules;
 import io.github.origingate.core.config.OriginGateConfig.Storage;
 import io.github.origingate.core.net.AddressRange;
 import io.github.origingate.core.rules.Countries;
+import io.github.origingate.core.util.Compat;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public final class ConfigLoader {
     private static final int MAX_LIST = 1000;
+    /** Read once at startup, so a reload never opens the plugin JAR, which may be renamed or deleted by then. */
+    private static final Map<String, byte[]> BUNDLED = new HashMap<>();
+    static {
+        for (String name : new String[] {"config.yml", "messages.yml"}) {
+            try (InputStream input = ConfigLoader.class.getResourceAsStream("/" + name)) {
+                if (input != null) BUNDLED.put(name, Compat.readAll(input));
+            } catch (IOException ex) {
+                // Reported as missing where it is used.
+            }
+        }
+    }
 
     private ConfigLoader() { }
+
+    /** The default config.yml or messages.yml from the plugin JAR, or null when it is missing. */
+    public static InputStream bundled(String name) {
+        byte[] data = BUNDLED.get(name);
+        return data == null ? null : new ByteArrayInputStream(data);
+    }
 
     public static OriginGateConfig load(Path dataDirectory) throws ConfigException {
         Path root = dataDirectory.toAbsolutePath().normalize();

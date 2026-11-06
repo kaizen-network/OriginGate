@@ -14,6 +14,7 @@ import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -327,7 +328,7 @@ public final class LookupService {
         if (storagePaused()) return null;
         try {
             return storage.find(ip, notBefore);
-        } catch (SQLException | RuntimeException ex) {
+        } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
             pauseStorage("read", ip, ex);
             return null;
         }
@@ -337,7 +338,7 @@ public final class LookupService {
         if (storagePaused()) return;
         try {
             storage.save(info);
-        } catch (SQLException | RuntimeException ex) {
+        } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
             pauseStorage("save", info.ip(), ex);
         }
     }
@@ -346,7 +347,7 @@ public final class LookupService {
         return clock.instant().isBefore(storagePausedUntil);
     }
 
-    private void pauseStorage(String action, String ip, Exception ex) {
+    private void pauseStorage(String action, String ip, Throwable ex) {
         storagePausedUntil = clock.instant().plus(STORAGE_PAUSE);
         log.warn("Could not " + action + " storage for " + ip + ", skipping storage for "
                 + STORAGE_PAUSE.getSeconds() + " seconds: " + Text.message(ex), null);

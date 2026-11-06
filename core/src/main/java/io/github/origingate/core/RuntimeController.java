@@ -80,7 +80,7 @@ public final class RuntimeController implements AutoCloseable {
             }
             logStarted(next, old == null ? "OriginGate is running" : "OriginGate reloaded", current);
             return "OriginGate reloaded." + (next.config().dryRun() ? " Dry run is on: nobody is kicked." : "");
-        } catch (Exception ex) {
+        } catch (Exception | ServiceConfigurationError | LinkageError ex) {
             if (runtime == null) {
                 log.error("OriginGate could not start and is NOT checking connections: " + Text.message(ex), ex);
                 log.error("Fix the problem, then run: origingate reload", null);

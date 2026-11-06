@@ -23,7 +23,7 @@
 
 `business-8.8.8.8.json` and `hosting-1.1.1.1.json` are real v3 responses for public DNS addresses, fetched without a key. The other fixtures are written by hand from the documented v3 format and use documentation address ranges.
 
-`platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes) and that placeholders render as plain text.
+`platform-velocity:test` checks the shaded JAR (descriptor, relocations, notices, no probe classes), that placeholders render as plain text, that the database drivers read their service files from memory, and that the MariaDB driver and the bundled defaults still work after the JAR is deleted (skipped on Windows, which cannot delete an open file).
 
 `platform-bukkit:test` checks pending connections, reconnect results, Java 8 bytecode, and duplicate-free packaging for Paper. `platform-bungeecord:test` checks one-time release of login holds and proxy packaging. All three artifact tests check that only the 8 listed SQLite native libraries are packed and that the JAR is under 10 MB.
 

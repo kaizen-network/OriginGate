@@ -50,6 +50,12 @@ public final class Compat {
         }
         return total;
     }
+    public static byte[] readAll(InputStream input) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        for (int count; (count = input.read(buffer)) != -1; ) bytes.write(buffer, 0, count);
+        return bytes.toByteArray();
+    }
     public static void skip(InputStream input, long length) throws IOException {
         while (length > 0) {
             long count = input.skip(length);
