@@ -25,6 +25,12 @@ class AddressesTest {
         assertTrue(Addresses.parse(null).isEmpty());
     }
 
+    @Test void textStartingWithADotIsNeverResolved() {
+        assertTrue(Addresses.parse(".:").isEmpty());
+        assertTrue(Addresses.parse("...:").isEmpty());
+        assertTrue(Addresses.parse(".1:2").isEmpty());
+    }
+
     @Test void textIsCanonical() {
         assertEquals("2001:db8:0:0:0:0:0:1", Addresses.text(ip("2001:db8::1")));
         assertEquals("192.0.2.1", Addresses.text(ip("192.0.2.1")));

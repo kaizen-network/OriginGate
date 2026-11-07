@@ -230,7 +230,7 @@ class AccessListsTest {
         AccessLists second = load(SqlIpStorage.sqlite(file), clock);
         first.add(entry(ListEntry.Kind.DENY, "kai")).get();
         // A quiet server: time passes with no login, then the timer fires.
-        clock.advance(Duration.ofMinutes(10));
+        clock.advance(Duration.ofSeconds(5));
         second.refresh();
         assertTrue(second.match("Kai", KAI, HOME).isPresent());
     }
