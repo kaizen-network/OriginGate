@@ -54,6 +54,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
                 return names;
             }
             @Override public String reload() { return controller.reload(); }
+            @Override public void kick(java.util.function.Predicate<LoginAttempt> who, Decision decision) { kickMatching(who, decision); }
         });
         getProxy().getPluginManager().registerListener(this, this);
         getProxy().getPluginManager().registerCommand(this, new GateCommand());
@@ -142,6 +143,19 @@ public final class OriginGateBungee extends Plugin implements Listener {
         LoginHold hold = holds.remove(event.getPlayer());
         if (hold != null) hold.close();
     }
+    /** BungeeCord's disconnect is safe from any thread. */
+    private void kickMatching(java.util.function.Predicate<LoginAttempt> who, Decision decision) {
+        OriginGateRuntime active = controller.runtime();
+        if (active == null) return;
+        for (ProxiedPlayer player : getProxy().getPlayers()) {
+            InetAddress address = address(player);
+            if (address == null) continue;
+            LoginAttempt attempt = attempt(active, player, address);
+            if (!who.test(attempt)) continue;
+            Component reason = render(active.messages().kick(decision.rule()), attempt, decision);
+            player.disconnect(reason == null ? TextComponent.fromLegacyText("You cannot join this server.") : legacy(reason, player));
+        }
+    }
     /** Null for a connection without an IP address, such as a Unix domain socket listener. */
     private static InetAddress address(ProxiedPlayer player) {
         SocketAddress remote = player.getSocketAddress();
@@ -184,6 +198,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
         return new Commands.Sender() {
             @Override public boolean hasPermission(String permission) { return source.hasPermission(permission); }
             @Override public void reply(String line) { source.sendMessage(new TextComponent(line)); }
+            @Override public String name() { return source instanceof ProxiedPlayer ? source.getName() : "console"; }
         };
     }
     private final class GateCommand extends Command implements TabExecutor {
