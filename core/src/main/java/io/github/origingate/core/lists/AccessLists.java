@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.ServiceConfigurationError;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -85,7 +86,7 @@ public final class AccessLists {
     public CompletableFuture<Void> add(ListEntry entry) {
         return submit(() -> {
             table.put(entry);
-            readOrThrow();
+            readNow();
             return null;
         });
     }
@@ -94,7 +95,7 @@ public final class AccessLists {
     public CompletableFuture<Boolean> remove(ListEntry.Kind kind, String target) {
         return submit(() -> {
             int removed = table.remove(kind, target);
-            readOrThrow();
+            readNow();
             return removed > 0;
         });
     }
@@ -144,12 +145,12 @@ public final class AccessLists {
         }
     }
 
-    /** Reads the table. A failure is logged once until a read works again, and the next try waits for the next refresh. */
+    /** Reads the table. A failure, also a driver that will not load, is logged once until a read works again, and the next try waits for the next refresh. */
     private void readNow() {
         try {
             readOrThrow();
             failing = false;
-        } catch (SQLException ex) {
+        } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
             readAt = clock.instant();
             if (!failing) log.warn("The allow and deny lists could not be read, so they may be out of date: " + ex.getMessage(), null);
             failing = true;
@@ -177,7 +178,7 @@ public final class AccessLists {
             executor.execute(() -> {
                 try {
                     future.complete(task.run());
-                } catch (SQLException | RuntimeException ex) {
+                } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
                     future.completeExceptionally(ex);
                 }
             });

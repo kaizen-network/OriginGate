@@ -135,6 +135,74 @@ class AccessListsTest {
         assertEquals(1, log.warnings.size());
     }
 
+    /** A table whose calls throw what the test says; {@code failAll}/{@code failPut} pick which. */
+    private static final class BrokenTable implements ListTable {
+        final AtomicInteger reads = new AtomicInteger();
+        final ListTable inner = ListTable.memory();
+        volatile Error allError;
+        volatile Error putError;
+
+        @Override public List<ListEntry> all() throws SQLException {
+            reads.incrementAndGet();
+            if (allError != null) throw allError;
+            return inner.all();
+        }
+        @Override public void put(ListEntry entry) throws SQLException {
+            if (putError != null) throw putError;
+            inner.put(entry);
+        }
+        @Override public int remove(ListEntry.Kind kind, String target) throws SQLException { return inner.remove(kind, target); }
+        @Override public int deleteExpired(Instant now) throws SQLException { return inner.deleteExpired(now); }
+    }
+
+    @Test void driverErrorOnLoadStartsEmptyAndRetries() throws Exception {
+        BrokenTable table = new BrokenTable();
+        table.inner.put(entry(ListEntry.Kind.DENY, "kai"));
+        table.allError = new LinkageError("driver (test)");
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        TestSupport.RecordingLog log = new TestSupport.RecordingLog();
+        AccessLists lists = AccessLists.load(table, true, clock, Runnable::run, log);
+        assertEquals(0, lists.count(ListEntry.Kind.DENY));
+        assertEquals(1, log.warnings.size());
+
+        table.allError = null;
+        clock.advance(Duration.ofSeconds(31));
+        assertTrue(lists.match("Kai", KAI, HOME).isPresent());
+    }
+
+    @Test void failedRereadWaitsBeforeTryingAgain() {
+        BrokenTable table = new BrokenTable();
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        AccessLists lists = AccessLists.load(table, true, clock, Runnable::run, new TestSupport.RecordingLog());
+        table.allError = new java.util.ServiceConfigurationError("driver (test)");
+        clock.advance(Duration.ofSeconds(31));
+        int before = table.reads.get();
+        for (int i = 0; i < 5; i++) lists.match("Kai", KAI, HOME);
+        assertEquals(before + 1, table.reads.get());
+        clock.advance(Duration.ofSeconds(31));
+        lists.match("Kai", KAI, HOME);
+        assertEquals(before + 2, table.reads.get());
+    }
+
+    @Test void driverErrorOnWriteCompletesExceptionally() {
+        BrokenTable table = new BrokenTable();
+        table.putError = new LinkageError("driver (test)");
+        AccessLists lists = AccessLists.load(table, true, new TestSupport.MutableClock(TestSupport.NOW), Runnable::run, new TestSupport.RecordingLog());
+        java.util.concurrent.CompletableFuture<Void> added = lists.add(entry(ListEntry.Kind.DENY, "kai"));
+        assertTrue(added.isCompletedExceptionally());
+    }
+
+    @Test void savedEntryCompletesEvenWhenTheRereadFails() throws Exception {
+        BrokenTable table = new BrokenTable();
+        TestSupport.RecordingLog log = new TestSupport.RecordingLog();
+        AccessLists lists = AccessLists.load(table, true, new TestSupport.MutableClock(TestSupport.NOW), Runnable::run, log);
+        table.allError = new LinkageError("driver (test)");
+        lists.add(entry(ListEntry.Kind.DENY, "kai")).get();
+        assertTrue(lists.remove(ListEntry.Kind.DENY, "kai").get());
+        assertEquals(1, log.warnings.size());
+        assertEquals(0, lists.count(ListEntry.Kind.DENY));
+    }
+
     @Test void memoryOnlyListsNeverReread() throws Exception {
         TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
         AtomicInteger reads = new AtomicInteger();
