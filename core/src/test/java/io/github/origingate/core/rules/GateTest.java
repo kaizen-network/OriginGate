@@ -5,6 +5,9 @@ import io.github.origingate.core.TestSupport;
 import io.github.origingate.core.TestSupport.FakeProvider;
 import io.github.origingate.core.TestSupport.FakeStorage;
 import io.github.origingate.core.config.OriginGateConfig;
+import io.github.origingate.core.lists.AccessLists;
+import io.github.origingate.core.lists.ListEntry;
+import io.github.origingate.core.lists.ListTable;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.lookup.LookupException;
 import io.github.origingate.core.lookup.LookupService;
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -53,6 +57,71 @@ class GateTest {
         LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
                 Duration.ofDays(30), workers, clock, Log.NONE);
         return new Gate(config, lookups, Log.NONE);
+    }
+
+    private Gate gateWithLists(AccessLists lists, boolean namesUnverified, Object... changes) throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, changes);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
+                Duration.ofDays(30), workers, clock, Log.NONE);
+        return new Gate(config, lookups, Log.NONE, namesUnverified, lists);
+    }
+
+    private static AccessLists lists(ListEntry... entries) {
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        AccessLists lists = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, Log.NONE);
+        for (ListEntry entry : entries) lists.add(entry).join();
+        return lists;
+    }
+
+    private static ListEntry entry(ListEntry.Kind kind, String target, Instant expiresAt, String note) {
+        return new ListEntry(kind, target, expiresAt, note, "console", TestSupport.NOW);
+    }
+
+    @Test void allowListLetsVpnInWithoutLookup() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "kai", null, "friend")), false);
+        Decision decision = run(gate, player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
+        assertEquals("player is on the allow list: friend", decision.note());
+        assertEquals(0, provider.calls.get());
+        Gate byAddress = gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "203.0.113.0/24", null, null)), false);
+        Decision viaAddress = run(byAddress, player("Alex", VPN_IP));
+        assertEquals(Outcome.ALLOW, viaAddress.outcome());
+        assertEquals("address is on the allow list (203.0.113.0/24)", viaAddress.note());
+        assertEquals(0, provider.calls.get());
+    }
+
+    @Test void allowListNameGetsOfflineCaution() throws Exception {
+        Decision byName = run(gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "kai", null, null)), true), player("Kai", VPN_IP));
+        assertEquals(Gate.UNVERIFIED_NAME, byName.caution());
+        Decision byAddress = run(gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "203.0.113.7", null, null)), true), player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, byAddress.outcome());
+        assertNull(byAddress.caution());
+    }
+
+    @Test void denyListKicksBeforeLookup() throws Exception {
+        AccessLists lists = lists(entry(ListEntry.Kind.DENY, "198.51.100.0/24", null, "bots"));
+        Decision decision = run(gateWithLists(lists, false), player("Kai", PROXY_IP, "origingate.bypass.proxy"));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.DENY_LIST, decision.rule());
+        assertEquals("address is on the deny list (198.51.100.0/24): bots", decision.note());
+        assertEquals(0, provider.calls.get());
+        Decision dry = run(gateWithLists(lists, false, "dry-run", true), player("Kai", PROXY_IP));
+        assertEquals(Outcome.DENY, dry.outcome());
+        assertFalse(dry.kicks());
+    }
+
+    @Test void configBypassBeatsDenyList() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.DENY, "kai", null, null)), false, "bypass.players", List.of("Kai"));
+        assertEquals(Outcome.ALLOW, run(gate, player("Kai", VPN_IP)).outcome());
+    }
+
+    @Test void expiredDenyEntryIsIgnored() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.DENY, "kai", TestSupport.NOW.minusSeconds(1), null)), false);
+        Decision decision = run(gate, player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
     }
 
     private static Decision run(Gate gate, LoginAttempt attempt) throws Exception {

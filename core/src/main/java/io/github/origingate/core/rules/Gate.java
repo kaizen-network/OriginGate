@@ -5,6 +5,8 @@ import io.github.origingate.core.Text;
 import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.config.OriginGateConfig.CountryMode;
 import io.github.origingate.core.config.OriginGateConfig.FailureMode;
+import io.github.origingate.core.lists.AccessLists;
+import io.github.origingate.core.lists.ListEntry;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.net.AddressRange;
@@ -24,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Decides whether a connection may join. Order: global bypass, deny-addresses, private-address skip,
+ * Decides whether a connection may join. Order: global bypass, allow list, deny list, deny-addresses, private-address skip,
  * lookup, then the deny-networks, allow-networks, vpn, proxy, hosting, and country rules. The first rule that matches
  * decides. A network on allow-networks skips only the vpn, proxy, and hosting rules.
  */
@@ -37,6 +39,7 @@ public final class Gate {
     private final Log log;
     private final Set<String> permissionNames;
     private final String bypassCaution;
+    private final AccessLists lists;
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log) {
         this(config, lookups, log, false);
@@ -44,6 +47,11 @@ public final class Gate {
 
     /** {@code namesUnverified}: offline mode or BungeeCord IP forwarding, where anyone can join with any name. */
     public Gate(OriginGateConfig config, LookupService lookups, Log log, boolean namesUnverified) {
+        this(config, lookups, log, namesUnverified, AccessLists.empty());
+    }
+
+    public Gate(OriginGateConfig config, LookupService lookups, Log log, boolean namesUnverified, AccessLists lists) {
+        this.lists = lists;
         this.config = config;
         this.lookups = lookups;
         this.log = log;
@@ -111,6 +119,17 @@ public final class Gate {
         if (contains(bypass.addresses(), address)) return Optional.of(allow("address is on the bypass list", null));
         if (attempt.hasAny(bypass.permissions())) {
             return Optional.of(allow("player has a global bypass permission", null, bypassCaution));
+        }
+
+        Optional<ListEntry> listed = lists.match(attempt.username(), attempt.uuid(), address);
+        if (listed.isPresent()) {
+            ListEntry entry = listed.get();
+            String suffix = entry.note() == null || entry.note().isEmpty() ? "" : ": " + entry.note();
+            String kind = entry.kind() == ListEntry.Kind.ALLOW ? "allow" : "deny";
+            String note = (entry.isAddress() ? "address is on the " + kind + " list (" + entry.target() + ")"
+                    : "player is on the " + kind + " list") + suffix;
+            if (entry.kind() == ListEntry.Kind.ALLOW) return Optional.of(allow(note, null, entry.isAddress() ? null : bypassCaution));
+            return Optional.of(matched(attempt, Rule.DENY_LIST, Collections.<String>emptyList(), null, note));
         }
 
         OriginGateConfig.AddressRule deny = config.rules().denyAddresses();

@@ -112,8 +112,9 @@ public final class RuntimeController implements AutoCloseable {
         if (active == null) return;
         try {
             OriginGateRuntime.Cleanup cleanup = active.deleteExpired();
-            if (cleanup.rows() > 0 || cleanup.files() > 0) {
-                log.info("Deleted " + cleanup.rows() + " expired lookups and " + cleanup.files() + " old log files");
+            if (cleanup.rows() > 0 || cleanup.files() > 0 || cleanup.listEntries() > 0) {
+                log.info("Deleted " + cleanup.rows() + " expired lookups, " + cleanup.files() + " old log files, and "
+                        + cleanup.listEntries() + " expired list entries");
             }
         } catch (Exception ex) {
             log.warn("Could not delete expired OriginGate data: " + Text.message(ex), null);

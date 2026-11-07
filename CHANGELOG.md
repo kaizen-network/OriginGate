@@ -10,6 +10,7 @@ Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working u
 
 - `allow-networks` rule: lets in networks you list by AS number when the `vpn`, `proxy`, or `hosting` rule would kick them, for example a school or mobile carrier that a provider wrongly flags. `deny-networks` and `country` still apply. Off by default.
 - Storage for allow and deny list entries (table `origingate_list`, created automatically). Entries can expire, carry a note, and are kept in memory, so logins never wait on the database.
+- The allow and deny lists are checked on every login before any lookup. A deny list entry kicks with the new `deny-list` rule and message (`kick.deny-list`, bundled text is used when missing). An allow list entry lets the player in with no lookup. `origingate status` shows the entry counts. The hourly cleanup deletes expired entries.
 
 ## 1.1.1 (2026-11-07)
 

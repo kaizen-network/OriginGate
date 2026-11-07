@@ -17,14 +17,16 @@ On Velocity, the check runs after permission plugins such as LuckPerms have load
 ## Order of checks
 
 1. Global bypass: `bypass.players` (name or UUID), `bypass.addresses`, `bypass.permissions`.
-2. `deny-addresses`, when enabled.
-3. Private address skip (`lookup.skip-private-addresses`).
-4. Lookup, waiting at most `lookup.wait-millis`.
-5. `deny-networks`, `allow-networks` (skips `vpn`, `proxy`, and `hosting` for a network on its list), `vpn`, `proxy`, `hosting`, `country`, when enabled.
+2. Allow list entry (`origingate allow`): lets the player in with no lookup. A name entry gets the same offline-mode caution as `bypass.players`.
+3. Deny list entry (`origingate deny`): the `deny-list` rule. No bypass permission applies.
+4. `deny-addresses`, when enabled.
+5. Private address skip (`lookup.skip-private-addresses`).
+6. Lookup, waiting at most `lookup.wait-millis`.
+7. `deny-networks`, `allow-networks` (skips `vpn`, `proxy`, and `hosting` for a network on its list), `vpn`, `proxy`, `hosting`, `country`, when enabled.
 
 The first rule that matches decides: kick, or let in through that rule's bypass permission. Later rules are not checked. For example, a player with the VPN bypass who uses a VPN from a country outside the allowlist is let in, because the vpn rule matched first.
 
-A `bypass.addresses` entry wins over a `deny-addresses` entry.
+A `bypass.addresses` entry wins over a `deny-addresses` entry, and over the lists. Within the lists, an entry for the player's name or UUID comes before an entry for their address. When two address entries match, the allow entry wins. Expired entries are ignored at once and deleted by the hourly cleanup. Logins read the lists from memory only, so they never wait on the database.
 
 ## Lookups
 

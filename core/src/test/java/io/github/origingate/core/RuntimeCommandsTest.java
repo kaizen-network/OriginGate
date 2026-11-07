@@ -1,6 +1,7 @@
 package io.github.origingate.core;
 
 import com.sun.net.httpserver.HttpServer;
+import io.github.origingate.core.lists.ListEntry;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.rules.LoginAttempt;
 import io.github.origingate.core.storage.SqlIpStorage;
@@ -227,9 +228,31 @@ class RuntimeCommandsTest {
         Path logs = Files.createDirectories(directory.resolve("logs"));
         Files.writeString(logs.resolve(LocalDate.now().minusDays(400) + ".log"), "old\n");
 
-        assertEquals(new OriginGateRuntime.Cleanup(0, 0), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 0), runtime.deleteExpired());
         load();
-        assertEquals(new OriginGateRuntime.Cleanup(1, 1), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(1, 1, 0), runtime.deleteExpired());
+    }
+
+    @Test void statusShowsListCounts() throws Exception {
+        load();
+        runtime.lists().add(entry(ListEntry.Kind.ALLOW, "kai", null)).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "198.51.100.0/24", null)).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "alex", null)).join();
+        Replies sender = new Replies(Commands.STATUS);
+        commands().execute(new String[] {"status"}, sender);
+        sender.waitFor("Lists: 1 allow and 2 deny entries");
+    }
+
+    @Test void cleanupDeletesExpiredEntries() throws Exception {
+        load("storage.keep-days", 0, "log-file-keep-days", 0);
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "kai", Instant.now().minusSeconds(60))).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "alex", Instant.now().plus(Duration.ofDays(1)))).join();
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 1), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 0), runtime.deleteExpired());
+    }
+
+    private static ListEntry entry(ListEntry.Kind kind, String target, Instant expiresAt) {
+        return new ListEntry(kind, target, expiresAt, null, "console", Instant.now());
     }
 
     @Test void commandsExplainWhenNotRunning() throws Exception {

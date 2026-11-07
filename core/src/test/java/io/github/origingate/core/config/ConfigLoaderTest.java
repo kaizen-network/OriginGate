@@ -125,7 +125,8 @@ class ConfigLoaderTest {
         TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
         OriginGateConfig legacy = ConfigLoader.load(directory);
         assertFalse(legacy.rules().allowNetworks().enabled());
-        Messages.load(directory);
+        Messages messages = Messages.load(directory);
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
     }
 
     @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {

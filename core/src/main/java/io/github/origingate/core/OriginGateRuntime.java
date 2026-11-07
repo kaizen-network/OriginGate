@@ -4,6 +4,9 @@ import io.github.origingate.core.config.ConfigException;
 import io.github.origingate.core.config.ConfigLoader;
 import io.github.origingate.core.config.Messages;
 import io.github.origingate.core.config.OriginGateConfig;
+import io.github.origingate.core.lists.AccessLists;
+import io.github.origingate.core.lists.ListEntry;
+import io.github.origingate.core.lists.ListTable;
 import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.lookup.MemoryCache;
 import io.github.origingate.core.lookup.Providers;
@@ -47,6 +50,7 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final Providers providers;
     private final ThreadPoolExecutor workers;
     private final Gate gate;
+    private final AccessLists lists;
     private final DecisionFile decisionFile;
     private final Clock clock;
     private final LookupStats stats;
@@ -59,7 +63,7 @@ public final class OriginGateRuntime implements AutoCloseable {
     private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
-                              Providers providers, ThreadPoolExecutor workers, Gate gate, DecisionFile decisionFile,
+                              Providers providers, ThreadPoolExecutor workers, Gate gate, AccessLists lists, DecisionFile decisionFile,
                               Clock clock, LookupStats stats, AtomicBoolean current, String storageName,
                               String storageProblem) {
         this.config = config;
@@ -69,6 +73,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.providers = providers;
         this.workers = workers;
         this.gate = gate;
+        this.lists = lists;
         this.decisionFile = decisionFile;
         this.clock = clock;
         this.stats = stats;
@@ -153,9 +158,11 @@ public final class OriginGateRuntime implements AutoCloseable {
                 config.lookup().maxLookupsPerMinute(), stats, whileCurrent,
                 // Only answers that a rule acts on are kept for a whole IPv6 /64; clean answers stay per address.
                 info -> Gate.match(config.rules(), info).isPresent());
+        boolean persistent = storage instanceof ListTable;
+        AccessLists lists = AccessLists.load(persistent ? (ListTable) storage : ListTable.memory(), persistent, clock, workers, log);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
-        return new OriginGateRuntime(config, messages, storage, http, providers, workers, new Gate(config, lookups, log, namesUnverified),
-                decisionFile, clock, stats, current, storageName, storageProblem);
+        return new OriginGateRuntime(config, messages, storage, http, providers, workers,
+                new Gate(config, lookups, log, namesUnverified, lists), lists, decisionFile, clock, stats, current, storageName, storageProblem);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -170,33 +177,37 @@ public final class OriginGateRuntime implements AutoCloseable {
     public static final class Cleanup {
         private final int rows;
         private final int files;
+        private final int listEntries;
 
-        public Cleanup(int rows, int files) {
+        public Cleanup(int rows, int files, int listEntries) {
             this.rows = rows;
             this.files = files;
+            this.listEntries = listEntries;
         }
 
         public int rows() { return rows; }
         public int files() { return files; }
+        public int listEntries() { return listEntries; }
 
         @Override public boolean equals(Object other) {
             if (this == other) return true;
             if (!(other instanceof Cleanup)) return false;
             Cleanup that = (Cleanup) other;
             return java.util.Objects.equals(rows, that.rows)
-                && java.util.Objects.equals(files, that.files);
+                && java.util.Objects.equals(files, that.files)
+                && java.util.Objects.equals(listEntries, that.listEntries);
         }
-        @Override public int hashCode() { return java.util.Objects.hash(rows, files); }
-        @Override public String toString() { return "Cleanup[" + "rows=" + rows + ", " + "files=" + files + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(rows, files, listEntries); }
+        @Override public String toString() { return "Cleanup[" + "rows=" + rows + ", " + "files=" + files + ", " + "listEntries=" + listEntries + "]"; }
  }
 
-    /** Deletes stored lookups older than {@code keep-days} and log files older than {@code log-file-keep-days}. Blocks. */
+    /** Deletes stored lookups older than {@code keep-days} log files older than {@code log-file-keep-days}, and expired list entries. Blocks. */
     public Cleanup deleteExpired() throws SQLException, IOException {
         int keepDays = config.storage().keepDays();
         int rows = keepDays == 0 ? 0 : storage.deleteOlderThan(clock.instant().minus(Duration.ofDays(keepDays)));
         int logDays = config.logFileKeepDays();
         int files = decisionFile == null || logDays == 0 ? 0 : decisionFile.deleteOlderThan(logDays);
-        return new Cleanup(rows, files);
+        return new Cleanup(rows, files, lists.deleteExpired());
     }
 
     /** Forgets one IP, or every IP with "all", in memory and in OriginGate's own table. */
@@ -226,6 +237,8 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     public Gate gate() { return gate; }
 
+    public AccessLists lists() { return lists; }
+
     /** The lines of {@code origingate status}: lookups since the plugin started, the budget, and each provider. */
     public List<String> status() {
         List<String> lines = new ArrayList<>();
@@ -241,6 +254,7 @@ public final class OriginGateRuntime implements AutoCloseable {
                 : lookups.budgetUsed() + " of " + lookups.budgetPerMinute() + " lookups in the last minute"));
         lines.add("Memory cache: " + lookups.cache().size() + " entries. Storage: " + storageName
                 + (storageProblem == null ? "" : " (" + storageProblem + ")"));
+        lines.add("Lists: " + lists.count(ListEntry.Kind.ALLOW) + " allow and " + lists.count(ListEntry.Kind.DENY) + " deny entries");
         lines.add("Providers (" + providers.chain().describe() + "):");
         for (String line : providers.chain().status()) lines.add("  " + line);
         lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)
