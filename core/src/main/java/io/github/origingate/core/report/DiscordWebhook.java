@@ -38,8 +38,10 @@ public final class DiscordWebhook implements AutoCloseable {
     /** 10 lines of at most this many characters, plus the "And n more." line, stay under Discord's 2000. */
     private static final int MAX_LINE = 190;
     private static final String SPECIAL = "\\*_~`|>[]()#";
-    /** A run of address characters with an optional /prefix; each hit is confirmed with {@link Addresses#parse}. */
-    private static final Pattern ADDRESS = Pattern.compile("(?<![0-9A-Za-z:.])[0-9A-Fa-f:.]{2,45}(?:/[0-9]{1,3})?(?![0-9A-Za-z:])");
+    private static final String HIDDEN = "IP hidden";
+    /** A run of address characters with an optional /prefix; {@link Addresses#parse} confirms it. */
+    private static final Pattern RUN = Pattern.compile("[0-9A-Fa-f:.]{2,45}(?:/[0-9]{1,3})?");
+    private static final Pattern DOTTED_QUAD = Pattern.compile("[0-9]{1,3}(?:[.][0-9]{1,3}){3}(?:/[0-9]{1,3})?");
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private final URI url;
@@ -108,25 +110,32 @@ public final class DiscordWebhook implements AutoCloseable {
         return escape(showIp ? free : hideAddresses(free));
     }
 
+    /**
+     * Fails closed. Every dotted quad goes, whatever surrounds it (a port, a colon). Every run of address characters
+     * goes when it, or the run without leading or trailing colons and dots, parses as an IP literal (no DNS).
+     */
     static String hideAddresses(String text) {
-        Matcher matcher = ADDRESS.matcher(text);
+        Matcher matcher = RUN.matcher(text);
         StringBuffer result = new StringBuffer();
-        while (matcher.find()) {
-            String found = matcher.group();
-            int slash = found.indexOf('/');
-            String address = slash < 0 ? found : found.substring(0, slash);
-            boolean hit = Addresses.parse(address).isPresent();
-            String dots = "";
-            if (!hit && slash < 0 && address.endsWith(".")) {
-                // A full stop that ends a sentence.
-                String bare = address.substring(0, address.length() - 1);
-                hit = Addresses.parse(bare).isPresent();
-                dots = ".";
-            }
-            matcher.appendReplacement(result, Matcher.quoteReplacement(hit ? "IP hidden" + dots : found));
-        }
+        while (matcher.find()) matcher.appendReplacement(result, Matcher.quoteReplacement(hideRun(matcher.group())));
         matcher.appendTail(result);
-        return result.toString();
+        return DOTTED_QUAD.matcher(result).replaceAll(HIDDEN);
+    }
+
+    private static String hideRun(String run) {
+        int slash = run.indexOf('/');
+        String core = slash < 0 ? run : run.substring(0, slash);
+        int length = core.length();
+        for (int start = 0; start <= length; start++) {
+            if (start > 0 && ":.".indexOf(core.charAt(start - 1)) < 0) break;
+            for (int end = length; end > start; end--) {
+                if (end < length && ":.".indexOf(core.charAt(end)) < 0) break;
+                if (Addresses.parse(core.substring(start, end)).isPresent()) {
+                    return core.substring(0, start) + HIDDEN + core.substring(end);
+                }
+            }
+        }
+        return run;
     }
 
     private void enqueue(String line) {

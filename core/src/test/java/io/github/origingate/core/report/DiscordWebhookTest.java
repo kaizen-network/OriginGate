@@ -142,6 +142,19 @@ class DiscordWebhookTest {
         assertTrue(text.contains("203.0.113.7") && text.contains("2001:db8::7") && !text.contains("IP hidden"), text);
     }
 
+    @Test void addressesWithPortsAndColonsAreHidden() {
+        DiscordWebhook hook = webhook(false);
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"), kick("No provider answered the VPN check for 203.0.113.7: timeout"));
+        hook.alert(false, "connect failed for 203.0.113.7:25565 today");
+        hook.alert(false, "connect failed for [2001:db8::1]:443 today");
+        hook.flush();
+        String text = content(0);
+        assertFalse(text.contains("203.0.113.7") || text.contains("2001:db8::1"), text);
+        assertTrue(text.contains("for IP hidden: timeout"), text);
+        assertTrue(text.contains("connect failed for IP hidden:25565 today"), text);
+        assertTrue(text.contains("connect failed for \\[IP hidden\\]:443 today"), text);
+    }
+
     @Test void bodySuppressesEmbeds() {
         DiscordWebhook hook = webhook(false);
         hook.alert(false, "see https://example.com/x");
