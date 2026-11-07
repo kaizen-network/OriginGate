@@ -276,7 +276,7 @@ public final class ConfigLoader {
         if (!rules.has(name)) return new NetworkRule(false, none, none, none);
         YamlSection section = rules.section(name);
         if (hasBypassPermissions) section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
-        else section.allowOnly("enabled", "asns", "organisations");
+        else section.allowOnly("enabled", "asns");
         List<String> asns = new ArrayList<>();
         for (String value : section.list("asns", MAX_LIST)) {
             String asn = value.toUpperCase(Locale.ROOT);
@@ -287,7 +287,8 @@ public final class ConfigLoader {
             asns.add(asn);
         }
         List<String> organisations = new ArrayList<>();
-        for (String value : section.list("organisations", MAX_LIST)) {
+        // allow-networks matches AS numbers only: a name match in an allow rule would let in any VPN with that text in its name.
+        if (hasBypassPermissions) for (String value : section.list("organisations", MAX_LIST)) {
             if (value.length() < 3) {
                 throw new ConfigException(section.key("organisations") + " entries need at least 3 characters: " + value);
             }

@@ -8,7 +8,7 @@ Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working u
 
 ### Added
 
-- `allow-networks` rule: lets in networks you list by AS number or by text in the provider, organisation, or VPN operator name, when the `vpn`, `proxy`, or `hosting` rule would kick them, for example a school or mobile carrier that a provider wrongly flags. `deny-networks` and `country` still apply. Off by default.
+- `allow-networks` rule: lets in networks you list by AS number when the `vpn`, `proxy`, or `hosting` rule would kick them, for example a school or mobile carrier that a provider wrongly flags. `deny-networks` and `country` still apply. Off by default.
 
 ## 1.1.1 (2026-11-07)
 

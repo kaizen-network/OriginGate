@@ -122,15 +122,13 @@ rules:
     # For example ["Example Hosting"]. At least 3 characters each.
     organisations: []
     bypass-permissions: ["origingate.bypass.deny-networks"]
-  # Lets in networks you list by AS number or name when the vpn, proxy, or hosting rule would kick them, for example
-  # a school or mobile carrier that a provider wrongly flags. deny-networks and country still apply.
-  # Works with every provider except maxmind, which has no network data.
+  # Lets in networks you list by AS number when the vpn, proxy, or hosting rule would kick them, for example a school
+  # or mobile carrier that a provider wrongly flags. deny-networks and country still apply. "origingate check <ip>"
+  # shows an address's AS number. Works with every provider except maxmind, which has no network data.
   allow-networks:
     enabled: false
     # AS numbers, for example [AS64496].
     asns: []
-    # Text to look for in the network's provider, organisation, or VPN operator name, ignoring case. At least 3 characters each.
-    organisations: []
   # Kicks IPs that the vpn-from provider flags as a VPN.
   vpn:
     enabled: true

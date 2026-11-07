@@ -280,7 +280,7 @@ class GateTest {
 
     private void withSchool() {
         provider.answer(new IpInfo(SCHOOL_IP, "Example Net", "Example School District", null, "Example City", "Example Region",
-                "Canada", "CA", "AS64511", false, true, "Residential", TestSupport.NOW));
+                "Canada", "CA", "AS64999", false, true, "Residential", TestSupport.NOW));
     }
 
     @Test void allowNetworksLetsInFlaggedNetwork() throws Exception {
@@ -291,10 +291,19 @@ class GateTest {
         assertEquals("network is on the allow list (AS64500)", decision.note());
     }
 
-    @Test void allowNetworksByOrganisationText() throws Exception {
+    @Test void allowNetworksIgnoresNames() throws Exception {
         withSchool();
-        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.organisations", List.of("Example School"));
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
         Decision decision = run(gate, player("Kai", SCHOOL_IP));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.PROXY, decision.rule());
+    }
+
+    @Test void allowNetworksExemptsHostingToo() throws Exception {
+        withHosting();
+        Gate gate = gate("rules.hosting.enabled", true, "rules.allow-networks.enabled", true,
+                "rules.allow-networks.asns", List.of("AS64496"));
+        Decision decision = run(gate, player("Kai", HOSTING_IP));
         assertEquals(Outcome.ALLOW, decision.outcome());
         assertEquals(Rule.ALLOW_NETWORKS, decision.rule());
     }

@@ -115,6 +115,11 @@ class ConfigLoaderTest {
                 .contains("rules.allow-networks"));
     }
 
+    @Test void allowNetworksRejectsOrganisations() throws Exception {
+        assertTrue(failure("rules.allow-networks.organisations", List.of("Example School"))
+                .contains("Unknown setting: rules.allow-networks.organisations"));
+    }
+
     @Test void oldConfigTurnsNewFeaturesOff() throws Exception {
         TestSupport.copyResource("/upgrade/config-1.0.0.yml", directory.resolve("config.yml"));
         TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));

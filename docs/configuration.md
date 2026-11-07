@@ -43,7 +43,7 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `bypass.addresses` | `[]` | IPs or CIDR ranges |
 | `rules.deny-addresses` | off | `list` of IPs or CIDR ranges, `bypass-permissions` |
 | `rules.deny-networks` | off | `asns` (AS numbers such as `AS64496`), `organisations` (text to look for in the network's provider, organisation, or VPN operator name, ignoring case, at least 3 characters), `bypass-permissions: [origingate.bypass.deny-networks]`. Works with every provider except `maxmind` |
-| `rules.allow-networks` | off | `asns` and `organisations`, like `deny-networks`, but no bypass permissions. Lets in a listed network when `vpn`, `proxy`, or `hosting` would kick it; `deny-networks` and `country` still apply. Works with every provider except `maxmind` |
+| `rules.allow-networks` | off | `asns` only (AS numbers, no name matching, no bypass permissions). Lets in a listed network when `vpn`, `proxy`, or `hosting` would kick it; `deny-networks` and `country` still apply. Works with every provider except `maxmind` |
 | `rules.vpn` | on | `bypass-permissions: [origingate.bypass.vpn]` |
 | `rules.proxy` | on | `allowed-countries` (codes), `bypass-permissions: [origingate.bypass.proxy]` |
 | `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
@@ -109,8 +109,9 @@ rules:
   allow-networks:
     enabled: true
     asns: [AS64500]
-    organisations: ["Example School"]
 ```
+
+Use `origingate check <ip>` to see an address's AS number. Names are not matched, because a name match could let in any VPN with that text in its name.
 
 Hosting and datacenter networks are where VPN services and bots rent their servers, so the hosting rule catches many that no provider flags as a VPN. It also catches players who play through a cloud desktop or a hosted VPN of their own; give them `origingate.bypass.hosting`. Try it with `dry-run: true` first.
 
