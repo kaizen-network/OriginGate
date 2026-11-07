@@ -133,6 +133,18 @@ class ConfigLoaderTest {
         assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
     }
 
+    @Test void config111TurnsNewFeaturesOff() throws Exception {
+        TestSupport.copyResource("/upgrade/config-1.1.1.yml", directory.resolve("config.yml"));
+        TestSupport.copyResource("/upgrade/messages-1.1.1.yml", directory.resolve("messages.yml"));
+        OriginGateConfig legacy = ConfigLoader.load(directory);
+        assertFalse(legacy.rules().allowNetworks().enabled());
+        assertFalse(legacy.rules().accountsPerIp().enabled());
+        assertFalse(legacy.discord().enabled());
+        Messages messages = Messages.load(directory);
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
+    }
+
     @Test void discordUrlMustBeHttps() throws Exception {
         OriginGateConfig off = TestSupport.config(directory);
         assertFalse(off.discord().enabled());
