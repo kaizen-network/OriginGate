@@ -1,6 +1,7 @@
 package io.github.origingate.core.lists;
 
 import io.github.origingate.core.Log;
+import io.github.origingate.core.Text;
 import io.github.origingate.core.util.Compat;
 
 import java.net.InetAddress;
@@ -22,8 +23,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The allow and deny lists, kept in memory so a login never waits on the database. The copy is read again in the
- * background when it is older than {@link #REFRESH}, so entries added on another server that shares the database
- * apply within about that time. Commands on this server re-read at once.
+ * background when it is older than {@link #REFRESH} and by a timer every {@link #REFRESH}, so entries added on another
+ * server that shares the database apply within about that time. Commands on this server re-read at once.
  */
 public final class AccessLists {
     public static final Duration REFRESH = Duration.ofSeconds(30);
@@ -52,9 +53,50 @@ public final class AccessLists {
 
     /** Reads the table now. When it cannot be read, starts empty, logs one warning, and tries again when stale. */
     public static AccessLists load(ListTable table, boolean persistent, Clock clock, Executor executor, Log log) {
-        AccessLists lists = new AccessLists(table, persistent, clock, executor, log);
-        lists.readNow();
+        return load(table, persistent, clock, executor, log, null, true);
+    }
+
+    /** For a reload: {@code previous} is the lists of the runtime being replaced, or null. */
+    public static AccessLists load(ListTable table, boolean persistent, Clock clock, Executor executor, Log log, AccessLists previous) {
+        return load(table, persistent, clock, executor, log, previous, true);
+    }
+
+    /**
+     * Memory-only lists after memory-only lists keep the old entries. When the table cannot be read (or {@code read} is
+     * false because the database is known to be down), the copy from {@code previous} is used, or none, and the
+     * refresh timer tries again.
+     */
+    public static AccessLists load(ListTable table, boolean persistent, Clock clock, Executor executor, Log log,
+                                   AccessLists previous, boolean read) {
+        boolean sameMemory = !persistent && previous != null && !previous.persistent;
+        AccessLists lists = new AccessLists(sameMemory ? previous.table : table, persistent, clock, executor, log);
+        if (read) {
+            try {
+                lists.readOrThrow();
+                return lists;
+            } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
+                lists.firstReadFailed(previous, Text.message(ex));
+                return lists;
+            }
+        }
+        lists.firstReadFailed(previous, null);
         return lists;
+    }
+
+    private void firstReadFailed(AccessLists previous, String reason) {
+        if (previous != null) entries = previous.entries;
+        readAt = clock.instant();
+        failing = true;
+        if (reason == null) return;
+        log.warn("Could not read the allow and deny lists: " + reason + (previous != null
+                ? ". Using the entries from before the reload until the database answers."
+                : ". Entries do not apply until the database answers; OriginGate tries again every "
+                        + REFRESH.getSeconds() + " seconds."), null);
+    }
+
+    /** Reads the table again now, on the calling thread. The runtime calls this every {@link #REFRESH}. */
+    public void refresh() {
+        readNow();
     }
 
     /** Lists that live in memory only. */
@@ -152,7 +194,7 @@ public final class AccessLists {
             failing = false;
         } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
             readAt = clock.instant();
-            if (!failing) log.warn("The allow and deny lists could not be read, so they may be out of date: " + ex.getMessage(), null);
+            if (!failing) log.warn("The allow and deny lists could not be read, so they may be out of date: " + Text.message(ex), null);
             failing = true;
         }
     }

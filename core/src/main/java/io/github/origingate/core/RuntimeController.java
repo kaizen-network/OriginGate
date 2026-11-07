@@ -82,7 +82,9 @@ public final class RuntimeController implements AutoCloseable {
         try {
             OriginGateRuntime.installDefaults(directory);
             OfflineModeWarning.Mode current = currentMode();
-            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified(), online);
+            OriginGateRuntime before = runtime;
+            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified(), online,
+                    before == null ? null : before.lists());
             if (closed) {
                 next.close();
                 return "OriginGate is stopping.";

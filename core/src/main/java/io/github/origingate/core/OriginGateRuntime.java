@@ -29,6 +29,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,13 +67,15 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final String storageName;
     /** Why storage is memory-only, or null. */
     private final String storageProblem;
+    /** Re-reads persistent lists every 30 seconds; null for memory-only lists. */
+    private final ScheduledExecutorService listTimer;
     private volatile boolean closed;
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, AccessLists lists, DecisionFile decisionFile,
                               DiscordWebhook webhook,
                               Clock clock, LookupStats stats, AtomicBoolean current, String storageName,
-                              String storageProblem) {
+                              String storageProblem, ScheduledExecutorService listTimer) {
         this.config = config;
         this.messages = messages;
         this.storage = storage;
@@ -87,6 +91,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.current = current;
         this.storageName = storageName;
         this.storageProblem = storageProblem;
+        this.listTimer = listTimer;
     }
 
     /** Copies the default config.yml and messages.yml when they do not exist yet. */
@@ -118,9 +123,18 @@ public final class OriginGateRuntime implements AutoCloseable {
         return load(dataDirectory, baseLog, stats, alerts, namesUnverified, OnlineCount.NONE);
     }
 
-    /** {@code online} counts the players connected from one address, for accounts-per-ip. */
     public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts,
                                          boolean namesUnverified, OnlineCount online) throws ConfigException, SQLException {
+        return load(dataDirectory, baseLog, stats, alerts, namesUnverified, online, null);
+    }
+
+    /**
+     * {@code online} counts the players connected from one address, for accounts-per-ip. {@code previous} is the lists
+     * of the runtime being replaced, or null, so a reload does not drop entries.
+     */
+    public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts,
+                                         boolean namesUnverified, OnlineCount online, AccessLists previous)
+            throws ConfigException, SQLException {
         OriginGateConfig config = ConfigLoader.load(dataDirectory);
         Messages messages = Messages.load(dataDirectory);
         Log log = Log.withDebug(baseLog, config.consoleLog() == OriginGateConfig.ConsoleLog.DEBUG);
@@ -129,9 +143,11 @@ public final class OriginGateRuntime implements AutoCloseable {
         IpStorage storage;
         String storageName = settings.type();
         String storageProblem = null;
+        boolean storageReady = true;
         if (settings.type().equals("mysql")) {
             SqlIpStorage mysql = SqlIpStorage.mysql(settings.mysql());
-            if (!mysql.ready()) {
+            storageReady = mysql.ready();
+            if (!storageReady) {
                 log.warn("The database cannot be reached. OriginGate keeps checking connections without saved lookups "
                         + "and sets up the table once the database answers.", null);
             }
@@ -172,13 +188,27 @@ public final class OriginGateRuntime implements AutoCloseable {
                 // Only answers that a rule acts on are kept for a whole IPv6 /64; clean answers stay per address.
                 info -> Gate.match(config.rules(), info).isPresent());
         boolean persistent = storage instanceof ListTable;
-        AccessLists lists = AccessLists.load(persistent ? (ListTable) storage : ListTable.memory(), persistent, clock, workers, log);
+        // With the database down, a second blocking connection here would stall startup; the timer reads the lists later.
+        AccessLists lists = AccessLists.load(persistent ? (ListTable) storage : ListTable.memory(), persistent, clock, workers, log,
+                previous, storageReady);
+        ScheduledExecutorService listTimer = persistent ? listTimer(lists) : null;
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         DiscordWebhook webhook = config.discord().enabled()
                 ? new DiscordWebhook(URI.create(config.discord().webhookUrl()), config.discord().showIp(), http, log, "OriginGate/" + VERSION)
                 : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers,
-                new Gate(config, lookups, log, namesUnverified, lists, online), lists, decisionFile, webhook, clock, stats, current, storageName, storageProblem);
+                new Gate(config, lookups, log, namesUnverified, lists, online), lists, decisionFile, webhook, clock, stats, current, storageName, storageProblem, listTimer);
+    }
+
+    private static ScheduledExecutorService listTimer(AccessLists lists) {
+        ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, "OriginGate Lists");
+            thread.setDaemon(true);
+            return thread;
+        });
+        long seconds = AccessLists.REFRESH.getSeconds();
+        timer.scheduleWithFixedDelay(lists::refresh, seconds, seconds, TimeUnit.SECONDS);
+        return timer;
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -217,7 +247,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         @Override public String toString() { return "Cleanup[" + "rows=" + rows + ", " + "files=" + files + ", " + "listEntries=" + listEntries + "]"; }
  }
 
-    /** Deletes stored lookups older than {@code keep-days} log files older than {@code log-file-keep-days}, and expired list entries. Blocks. */
+    /** Deletes stored lookups older than {@code keep-days}, log files older than {@code log-file-keep-days}, and expired list entries. Blocks. */
     public Cleanup deleteExpired() throws SQLException, IOException {
         int keepDays = config.storage().keepDays();
         int rows = keepDays == 0 ? 0 : storage.deleteOlderThan(clock.instant().minus(Duration.ofDays(keepDays)));
@@ -326,6 +356,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         if (closed) return;
         closed = true;
         current.set(false);
+        if (listTimer != null) listTimer.shutdownNow();
         workers.shutdown();
         try {
             // The HTTP client refuses new requests once shut down, so wait for queued lookups first.

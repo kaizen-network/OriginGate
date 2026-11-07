@@ -222,4 +222,57 @@ class AccessListsTest {
         assertEquals(1, reads.get());
         assertFalse(lists.persistent());
     }
+
+    @Test void refreshShowsAnotherServersEntryWithoutAnyEarlierMatch() throws Exception {
+        Path file = directory.resolve("shared.db");
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        AccessLists first = load(SqlIpStorage.sqlite(file), clock);
+        AccessLists second = load(SqlIpStorage.sqlite(file), clock);
+        first.add(entry(ListEntry.Kind.DENY, "kai")).get();
+        // A quiet server: time passes with no login, then the timer fires.
+        clock.advance(Duration.ofMinutes(10));
+        second.refresh();
+        assertTrue(second.match("Kai", KAI, HOME).isPresent());
+    }
+
+    @Test void memoryListsKeepEntriesAcrossAReload() throws Exception {
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        AccessLists before = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, new TestSupport.RecordingLog());
+        before.add(entry(ListEntry.Kind.DENY, "kai")).get();
+        AccessLists after = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, new TestSupport.RecordingLog(), before);
+        assertTrue(after.match("Kai", KAI, HOME).isPresent());
+        after.add(entry(ListEntry.Kind.ALLOW, "sam")).get();
+        assertEquals(2, after.targets(ListEntry.Kind.DENY).size() + after.targets(ListEntry.Kind.ALLOW).size());
+    }
+
+    @Test void unreadableTableKeepsThePreviousCopy() throws Exception {
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        BrokenTable good = new BrokenTable();
+        AccessLists before = load(good, clock);
+        before.add(entry(ListEntry.Kind.DENY, "kai")).get();
+        BrokenTable down = new BrokenTable();
+        down.allError = new LinkageError();
+        TestSupport.RecordingLog log = new TestSupport.RecordingLog();
+        AccessLists after = AccessLists.load(down, true, clock, Runnable::run, log, before);
+        assertTrue(after.match("Kai", KAI, HOME).isPresent());
+        assertEquals(1, log.warnings.size());
+        assertTrue(log.warnings.get(0).contains("LinkageError") && log.warnings.get(0).contains("Using the entries from before the reload"), log.warnings.get(0));
+        assertFalse(log.warnings.get(0).contains("null"));
+
+        TestSupport.RecordingLog emptyLog = new TestSupport.RecordingLog();
+        AccessLists fresh = AccessLists.load(down, true, clock, Runnable::run, emptyLog);
+        assertEquals(0, fresh.count(ListEntry.Kind.DENY));
+        assertTrue(emptyLog.warnings.get(0).contains("Entries do not apply until the database answers"), emptyLog.warnings.get(0));
+        assertFalse(emptyLog.warnings.get(0).contains("out of date"));
+    }
+
+    @Test void databaseKnownToBeDownIsNotReadAtStartup() throws Exception {
+        BrokenTable table = new BrokenTable();
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        AccessLists lists = AccessLists.load(table, true, clock, Runnable::run, new TestSupport.RecordingLog(), null, false);
+        assertEquals(0, table.reads.get());
+        table.inner.put(entry(ListEntry.Kind.DENY, "kai"));
+        lists.refresh();
+        assertTrue(lists.match("Kai", KAI, HOME).isPresent());
+    }
 }

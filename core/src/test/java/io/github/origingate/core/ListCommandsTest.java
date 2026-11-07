@@ -257,4 +257,43 @@ class ListCommandsTest {
         Replies sender = run(both(), "allow", "add", "kai");
         assertTrue(sender.waitFor("Added").endsWith(" Kept in memory only until a restart."));
     }
+
+    private OriginGateRuntime reload() throws Exception {
+        OriginGateRuntime next = OriginGateRuntime.load(directory, Log.NONE, new io.github.origingate.core.lookup.LookupStats(),
+                Alerts.NONE, false, io.github.origingate.core.rules.OnlineCount.NONE, runtime.lists());
+        runtime.close();
+        runtime = next;
+        return next;
+    }
+
+    @Test void memoryOnlyEntriesSurviveAReload() throws Exception {
+        Files.createDirectories(directory.resolve("data/origingate.db"));
+        load();
+        run(both(), "deny", "add", "kai").waitFor("Added");
+        reload();
+        assertEquals(1, runtime.lists().count(ListEntry.Kind.DENY));
+    }
+
+    @Test void unreadableTableAtReloadKeepsTheEntries() throws Exception {
+        load();
+        run(both(), "deny", "add", "kai").waitFor("Added");
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + directory.resolve("data/origingate.db"));
+             Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE origingate_list RENAME COLUMN note TO note_old");
+        }
+        reload();
+        assertEquals(1, runtime.lists().count(ListEntry.Kind.DENY));
+    }
+
+    @Test void persistentListsRunARefreshThreadThatStopsOnClose() throws Exception {
+        load();
+        assertTrue(listThreads() >= 1);
+        runtime.close();
+        for (int i = 0; i < 50 && listThreads() > 0; i++) Thread.sleep(100);
+        assertEquals(0, listThreads());
+    }
+
+    private static long listThreads() {
+        return Thread.getAllStackTraces().keySet().stream().filter(t -> t.getName().equals("OriginGate Lists") && t.isAlive()).count();
+    }
 }
