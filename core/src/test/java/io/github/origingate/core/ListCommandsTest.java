@@ -41,6 +41,7 @@ class ListCommandsTest {
     @TempDir Path directory;
     private OriginGateRuntime runtime;
     private final List<Kick> kicks = new CopyOnWriteArrayList<>();
+    private volatile boolean kickFails;
 
     @AfterEach void stop() {
         if (runtime != null) runtime.close();
@@ -59,7 +60,10 @@ class ListCommandsTest {
             @Override public Optional<LoginAttempt> onlinePlayer(String name) { return Optional.empty(); }
             @Override public List<String> onlinePlayerNames() { return List.of("Alex"); }
             @Override public String reload() { return "reloaded"; }
-            @Override public void kick(Predicate<LoginAttempt> who, Decision decision) { kicks.add(new Kick(who, decision)); }
+            @Override public void kick(Predicate<LoginAttempt> who, Decision decision) {
+                kicks.add(new Kick(who, decision));
+                if (kickFails) throw new IllegalStateException("kick failed (test)");
+            }
         });
     }
 
@@ -295,5 +299,17 @@ class ListCommandsTest {
 
     private static long listThreads() {
         return Thread.getAllStackTraces().keySet().stream().filter(t -> t.getName().equals("OriginGate Lists") && t.isAlive()).count();
+    }
+
+    @Test void denyAddReplyComesEvenWhenTheKickThrows() throws Exception {
+        load();
+        kickFails = true;
+        assertTrue(run(both(), "deny", "add", "203.0.113.7").waitFor("Added").startsWith("Added 203.0.113.7 to the deny list"));
+    }
+
+    @Test void aThrowingKickCheckDoesNotDisconnect() throws Exception {
+        load();
+        run(both(), "deny", "add", "203.0.113.7").waitFor("Added");
+        assertTrue(!kicks.get(0).who().test(null));
     }
 }

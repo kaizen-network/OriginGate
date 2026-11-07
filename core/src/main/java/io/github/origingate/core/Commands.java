@@ -204,10 +204,18 @@ public final class Commands {
             boolean dryRun = runtime.config().dryRun();
             if (kind == ListEntry.Kind.DENY && !dryRun) {
                 // Exactly the players the login check would now turn away by the deny list (bypasses and allow entries spare the rest).
-                platform.kick(attempt -> {
-                    Optional<Decision> verdict = runtime.gate().beforeLookup(attempt);
-                    return verdict.isPresent() && verdict.get().outcome() == Decision.Outcome.DENY && verdict.get().rule() == Rule.DENY_LIST;
-                }, new Decision(Decision.Outcome.DENY, Rule.DENY_LIST, entry.note(), null, false));
+                try {
+                    platform.kick(attempt -> {
+                        try {
+                            Optional<Decision> verdict = runtime.gate().beforeLookup(attempt);
+                            return verdict.isPresent() && verdict.get().outcome() == Decision.Outcome.DENY && verdict.get().rule() == Rule.DENY_LIST;
+                        } catch (RuntimeException ex) {
+                            return false;
+                        }
+                    }, new Decision(Decision.Outcome.DENY, Rule.DENY_LIST, entry.note(), null, false));
+                } catch (RuntimeException ex) {
+                    // The entry is saved, so the reply below still goes out.
+                }
             }
             String text = "Added " + target + " to the " + kind.id() + " list, " + expiry(entry.expiresAt())
                     + (entry.note() == null ? "" : ", note: " + entry.note()) + ".";
