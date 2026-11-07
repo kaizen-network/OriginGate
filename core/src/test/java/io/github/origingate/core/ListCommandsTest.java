@@ -137,6 +137,17 @@ class ListCommandsTest {
         assertEquals(1, kicks.size());
     }
 
+    @Test void denyAddSparesPlayersTheLoginWouldLetIn() throws Exception {
+        load("bypass.players", List.of("lee"));
+        runtime.lists().add(new ListEntry(ListEntry.Kind.ALLOW, "kai", null, null, "console", Instant.now())).join();
+        Replies sender = run(both(), "deny", "add", "203.0.113.0/24");
+        sender.waitFor("Added");
+        Predicate<LoginAttempt> who = kicks.get(0).who();
+        assertTrue(!who.test(TestSupport.player("Kai", "203.0.113.7")));
+        assertTrue(!who.test(TestSupport.player("Lee", "203.0.113.9")));
+        assertTrue(who.test(TestSupport.player("Alex", "203.0.113.8")));
+    }
+
     @Test void denyAddInDryRunKicksNobody() throws Exception {
         load("dry-run", true);
         Replies sender = run(both(), "deny", "add", "Kai");
