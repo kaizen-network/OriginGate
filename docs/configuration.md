@@ -42,6 +42,7 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `bypass.players` | `[]` | Names (any case) or UUIDs. Anyone can claim them in offline mode; see [offline mode and proxies](#offline-mode-and-proxies) |
 | `bypass.addresses` | `[]` | IPs or CIDR ranges |
 | `rules.deny-addresses` | off | `list` of IPs or CIDR ranges, `bypass-permissions` |
+| `rules.accounts-per-ip` | off | `max` (1 to 100, default 3): the most players online at once from one address. Exact address only, not an IPv6 /64. No bypass permissions; use the allow list. Counts players on this server or proxy only, so on a network install it on the proxy. Shared addresses are common, so set it generously. On Bukkit it counts only on the main thread |
 | `rules.deny-networks` | off | `asns` (AS numbers such as `AS64496`), `organisations` (text to look for in the network's provider, organisation, or VPN operator name, ignoring case, at least 3 characters), `bypass-permissions: [origingate.bypass.deny-networks]`. Works with every provider except `maxmind` |
 | `rules.allow-networks` | off | `asns` only (AS numbers, no name matching, no bypass permissions). Lets in a listed network when `vpn`, `proxy`, or `hosting` would kick it; `deny-networks` and `country` still apply. Works with every provider except `maxmind` |
 | `rules.vpn` | on | `bypass-permissions: [origingate.bypass.vpn]` |

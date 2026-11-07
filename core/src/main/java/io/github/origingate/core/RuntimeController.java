@@ -25,6 +25,7 @@ public final class RuntimeController implements AutoCloseable {
     private final Supplier<OfflineModeWarning.Mode> mode;
     private final LookupStats stats = new LookupStats();
     private final Alerts alerts;
+    private final OnlineCount online;
     private final AtomicInteger droppedReports = new AtomicInteger();
     private final ThreadPoolExecutor reports = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(256), task -> {
@@ -42,6 +43,12 @@ public final class RuntimeController implements AutoCloseable {
 
     /** {@code mode} tells how the platform checks player names, for the offline-mode warning. */
     public RuntimeController(Path directory, Log log, Supplier<OfflineModeWarning.Mode> mode, StaffAlerts staff) {
+        this(directory, log, mode, staff, OnlineCount.NONE);
+    }
+
+    /** {@code online} counts the players connected from one address, for accounts-per-ip. */
+    public RuntimeController(Path directory, Log log, Supplier<OfflineModeWarning.Mode> mode, StaffAlerts staff, OnlineCount online) {
+        this.online = online;
         this.directory = directory;
         this.log = log;
         this.mode = mode;
@@ -66,7 +73,7 @@ public final class RuntimeController implements AutoCloseable {
         try {
             OriginGateRuntime.installDefaults(directory);
             OfflineModeWarning.Mode current = currentMode();
-            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified());
+            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified(), online);
             if (closed) {
                 next.close();
                 return "OriginGate is stopping.";

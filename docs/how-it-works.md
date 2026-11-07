@@ -21,8 +21,9 @@ On Velocity, the check runs after permission plugins such as LuckPerms have load
 3. Deny list entry (`origingate deny`): the `deny-list` rule. No bypass permission applies.
 4. `deny-addresses`, when enabled.
 5. Private address skip (`lookup.skip-private-addresses`).
-6. Lookup, waiting at most `lookup.wait-millis`.
-7. `deny-networks`, `allow-networks` (skips `vpn`, `proxy`, and `hosting` for a network on its list), `vpn`, `proxy`, `hosting`, `country`, when enabled.
+6. `accounts-per-ip`, when enabled: kicks the player when `max` players are already online from exactly the same address. No bypass permission applies; put players who share an address on the allow list. It counts players on this server or proxy only, so on a network install OriginGate on the proxy. Shared addresses are common (families, schools, mobile carriers), so keep it off or set it generously. Two logins at the same moment can both get in.
+7. Lookup, waiting at most `lookup.wait-millis`.
+8. `deny-networks`, `allow-networks` (skips `vpn`, `proxy`, and `hosting` for a network on its list), `vpn`, `proxy`, `hosting`, `country`, when enabled.
 
 The first rule that matches decides: kick, or let in through that rule's bypass permission. Later rules are not checked. For example, a player with the VPN bypass who uses a VPN from a country outside the allowlist is let in, because the vpn rule matched first.
 

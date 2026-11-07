@@ -67,6 +67,14 @@ class GateTest {
         return new Gate(config, lookups, Log.NONE, namesUnverified, lists);
     }
 
+    private Gate gateWithOnline(OnlineCount online, AccessLists lists, Object... changes) throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, changes);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
+                Duration.ofDays(30), workers, clock, Log.NONE);
+        return new Gate(config, lookups, Log.NONE, false, lists, online);
+    }
+
     private static AccessLists lists(ListEntry... entries) {
         Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
         AccessLists lists = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, Log.NONE);
@@ -122,6 +130,62 @@ class GateTest {
         Decision decision = run(gate, player("Kai", HOME_IP));
         assertEquals(Outcome.ALLOW, decision.outcome());
         assertNull(decision.rule());
+    }
+
+    @Test void accountsPerIpKicksAtTheLimit() throws Exception {
+        OnlineCount two = (address, except) -> 2;
+        Decision full = run(gateWithOnline(two, AccessLists.empty(), "rules.accounts-per-ip.enabled", true,
+                "rules.accounts-per-ip.max", 2), player("Kai", HOME_IP));
+        assertEquals(Outcome.DENY, full.outcome());
+        assertEquals(Rule.ACCOUNTS_PER_IP, full.rule());
+        assertEquals("2 players are already online from this address", full.note());
+        assertEquals(0, provider.calls.get());
+        OnlineCount one = (address, except) -> 1;
+        Decision room = run(gateWithOnline(one, AccessLists.empty(), "rules.accounts-per-ip.enabled", true,
+                "rules.accounts-per-ip.max", 2), player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, room.outcome());
+        assertEquals(1, provider.calls.get());
+    }
+
+    @Test void accountsPerIpPassesJoiningUuid() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<java.util.UUID> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<java.net.InetAddress> from = new java.util.concurrent.atomic.AtomicReference<>();
+        OnlineCount count = (address, except) -> {
+            from.set(address);
+            seen.set(except);
+            return 0;
+        };
+        LoginAttempt attempt = player("Kai", HOME_IP);
+        run(gateWithOnline(count, AccessLists.empty(), "rules.accounts-per-ip.enabled", true), attempt);
+        assertEquals(attempt.uuid(), seen.get());
+        assertEquals(attempt.address(), from.get());
+    }
+
+    @Test void accountsPerIpIsOffByDefault() throws Exception {
+        assertEquals(Outcome.ALLOW, run(gateWithOnline((address, except) -> 50, AccessLists.empty()), player("Kai", HOME_IP)).outcome());
+    }
+
+    @Test void accountsPerIpSkipsPrivateAddresses() throws Exception {
+        Decision decision = run(gateWithOnline((address, except) -> 50, AccessLists.empty(),
+                "rules.accounts-per-ip.enabled", true, "lookup.skip-private-addresses", true), player("Kai", "127.0.0.1"));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals("private address, lookup skipped", decision.note());
+    }
+
+    @Test void allowListBeatsAccountsPerIp() throws Exception {
+        AccessLists lists = lists(entry(ListEntry.Kind.ALLOW, HOME_IP, null, null));
+        Decision decision = run(gateWithOnline((address, except) -> 50, lists, "rules.accounts-per-ip.enabled", true),
+                player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(0, provider.calls.get());
+    }
+
+    @Test void dryRunDoesNotKickAccountsPerIp() throws Exception {
+        Decision decision = run(gateWithOnline((address, except) -> 5, AccessLists.empty(),
+                "rules.accounts-per-ip.enabled", true, "dry-run", true), player("Kai", HOME_IP));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.ACCOUNTS_PER_IP, decision.rule());
+        assertFalse(decision.kicks());
     }
 
     private static Decision run(Gate gate, LoginAttempt attempt) throws Exception {

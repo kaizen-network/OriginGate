@@ -66,7 +66,15 @@ public final class OriginGateVelocity {
             }
             @Override public void debug(String message) { logger.info(message); }
         }, () -> proxy.getConfiguration().isOnlineMode() ? OfflineModeWarning.Mode.ONLINE : OfflineModeWarning.Mode.OFFLINE,
-                this::staffAlert);
+                this::staffAlert, this::onlineFrom);
+    }
+
+    private int onlineFrom(InetAddress address, UUID except) {
+        int count = 0;
+        for (Player player : proxy.getAllPlayers()) {
+            if (address.equals(player.getRemoteAddress().getAddress()) && !player.getUniqueId().equals(except)) count++;
+        }
+        return count;
     }
 
     /** Lookup alerts come from worker threads; Velocity's sendMessage is safe from any thread. */

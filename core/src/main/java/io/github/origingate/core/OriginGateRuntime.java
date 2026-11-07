@@ -12,6 +12,7 @@ import io.github.origingate.core.lookup.MemoryCache;
 import io.github.origingate.core.lookup.Providers;
 import io.github.origingate.core.report.DecisionFile;
 import io.github.origingate.core.rules.Gate;
+import io.github.origingate.core.rules.OnlineCount;
 import io.github.origingate.core.storage.IpStorage;
 import io.github.origingate.core.storage.SqlIpStorage;
 import io.github.origingate.core.storage.SqliteUnavailableException;
@@ -108,6 +109,12 @@ public final class OriginGateRuntime implements AutoCloseable {
     /** {@code namesUnverified}: anyone may join with any name, so name and permission bypasses get a caution. */
     public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts,
                                          boolean namesUnverified) throws ConfigException, SQLException {
+        return load(dataDirectory, baseLog, stats, alerts, namesUnverified, OnlineCount.NONE);
+    }
+
+    /** {@code online} counts the players connected from one address, for accounts-per-ip. */
+    public static OriginGateRuntime load(Path dataDirectory, Log baseLog, LookupStats stats, Alerts alerts,
+                                         boolean namesUnverified, OnlineCount online) throws ConfigException, SQLException {
         OriginGateConfig config = ConfigLoader.load(dataDirectory);
         Messages messages = Messages.load(dataDirectory);
         Log log = Log.withDebug(baseLog, config.consoleLog() == OriginGateConfig.ConsoleLog.DEBUG);
@@ -162,7 +169,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         AccessLists lists = AccessLists.load(persistent ? (ListTable) storage : ListTable.memory(), persistent, clock, workers, log);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers,
-                new Gate(config, lookups, log, namesUnverified, lists), lists, decisionFile, clock, stats, current, storageName, storageProblem);
+                new Gate(config, lookups, log, namesUnverified, lists, online), lists, decisionFile, clock, stats, current, storageName, storageProblem);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {

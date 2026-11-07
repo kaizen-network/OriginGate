@@ -15,6 +15,7 @@ import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.*;
@@ -44,7 +45,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         stopping = false;
         hexColors = ServerVersion.hexColors(getServer().getBukkitVersion());
         controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()),
-                () -> IdentityMode.of(getServer()), this::staffAlert);
+                () -> IdentityMode.of(getServer()), this::staffAlert, this::onlineFrom);
         controller.reload();
         commands = new Commands(new Commands.Platform() {
             @Override public OriginGateRuntime runtime() { return controller.runtime(); }
@@ -257,6 +258,16 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
                 }
             });
         } catch (RuntimeException ex) { getLogger().warning("Could not disconnect players: " + Text.message(ex)); }
+    }
+    /** Players online from exactly this address. The player list is only safe to read on the main thread, so elsewhere it is 0. */
+    private int onlineFrom(InetAddress address, UUID except) {
+        if (!getServer().isPrimaryThread()) return 0;
+        int count = 0;
+        for (Player player : players()) {
+            InetSocketAddress remote = player.getAddress();
+            if (remote != null && address.equals(remote.getAddress()) && !player.getUniqueId().equals(except)) count++;
+        }
+        return count;
     }
     /** Bukkit changed this method's return type from an array to a collection. */
     private List<Player> players() {

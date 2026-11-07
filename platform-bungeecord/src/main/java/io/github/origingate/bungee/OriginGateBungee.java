@@ -38,7 +38,7 @@ public final class OriginGateBungee extends Plugin implements Listener {
         // The proxy faces the players, so its own online mode decides; ip_forward only concerns the backends.
         controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()),
                 () -> getProxy().getConfig().isOnlineMode() ? OfflineModeWarning.Mode.ONLINE : OfflineModeWarning.Mode.OFFLINE,
-                this::staffAlert);
+                this::staffAlert, this::onlineFrom);
         controller.reload();
         commands = new Commands(new Commands.Platform() {
             @Override public OriginGateRuntime runtime() { return controller.runtime(); }
@@ -155,6 +155,14 @@ public final class OriginGateBungee extends Plugin implements Listener {
             Component reason = render(active.messages().kick(decision.rule()), attempt, decision);
             player.disconnect(reason == null ? TextComponent.fromLegacyText("You cannot join this server.") : legacy(reason, player));
         }
+    }
+    /** The joining player is already listed at PostLoginEvent, so it is left out by UUID. */
+    private int onlineFrom(InetAddress address, java.util.UUID except) {
+        int count = 0;
+        for (ProxiedPlayer player : getProxy().getPlayers()) {
+            if (address.equals(address(player)) && !player.getUniqueId().equals(except)) count++;
+        }
+        return count;
     }
     /** Null for a connection without an IP address, such as a Unix domain socket listener. */
     private static InetAddress address(ProxiedPlayer player) {

@@ -27,7 +27,7 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Decides whether a connection may join. Order: global bypass, allow list, deny list, deny-addresses, private-address skip,
- * lookup, then the deny-networks, allow-networks, vpn, proxy, hosting, and country rules. The first rule that matches
+ * accounts-per-ip, lookup, then the deny-networks, allow-networks, vpn, proxy, hosting, and country rules. The first rule that matches
  * decides. A network on allow-networks skips only the vpn, proxy, and hosting rules.
  */
 public final class Gate {
@@ -40,6 +40,7 @@ public final class Gate {
     private final Set<String> permissionNames;
     private final String bypassCaution;
     private final AccessLists lists;
+    private final OnlineCount online;
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log) {
         this(config, lookups, log, false);
@@ -51,7 +52,13 @@ public final class Gate {
     }
 
     public Gate(OriginGateConfig config, LookupService lookups, Log log, boolean namesUnverified, AccessLists lists) {
+        this(config, lookups, log, namesUnverified, lists, OnlineCount.NONE);
+    }
+
+    public Gate(OriginGateConfig config, LookupService lookups, Log log, boolean namesUnverified, AccessLists lists,
+                OnlineCount online) {
         this.lists = lists;
+        this.online = online;
         this.config = config;
         this.lookups = lookups;
         this.log = log;
@@ -138,6 +145,15 @@ public final class Gate {
         }
         if (config.lookup().skipPrivateAddresses() && Addresses.isPrivate(address)) {
             return Optional.of(allow("private address, lookup skipped", null));
+        }
+        OriginGateConfig.AccountsRule accounts = config.rules().accountsPerIp();
+        if (accounts.enabled()) {
+            // ponytail: logins at the same moment can each see a count below the limit; count in-flight logins if bots exploit it.
+            int count = online.sameAddress(address, attempt.uuid());
+            if (count >= accounts.max()) {
+                return Optional.of(matched(attempt, Rule.ACCOUNTS_PER_IP, Collections.<String>emptyList(), null,
+                        count + (count == 1 ? " player is" : " players are") + " already online from this address"));
+            }
         }
         return Optional.empty();
     }

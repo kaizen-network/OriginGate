@@ -242,7 +242,7 @@ public final class ConfigLoader {
     }
 
     private static Rules rules(YamlSection rules) throws ConfigException {
-        rules.allowOnly("deny-addresses", "deny-networks", "allow-networks", "vpn", "proxy", "hosting", "country");
+        rules.allowOnly("deny-addresses", "accounts-per-ip", "deny-networks", "allow-networks", "vpn", "proxy", "hosting", "country");
         YamlSection deny = rules.section("deny-addresses");
         deny.allowOnly("enabled", "list", "bypass-permissions");
         YamlSection vpn = rules.section("vpn");
@@ -253,6 +253,7 @@ public final class ConfigLoader {
         country.allowOnly("enabled", "mode", "countries", "bypass-permissions");
         return new Rules(
                 new AddressRule(deny.bool("enabled"), ranges(deny, "list"), permissions(deny, "bypass-permissions")),
+                accountsPerIp(rules),
                 networks(rules, "deny-networks", true),
                 networks(rules, "allow-networks", false),
                 new BasicRule(vpn.bool("enabled"), permissions(vpn, "bypass-permissions")),
@@ -260,6 +261,14 @@ public final class ConfigLoader {
                 hosting(rules),
                 new CountryRule(country.bool("enabled"), country.choice("mode", CountryMode.class),
                         countries(country, "countries"), permissions(country, "bypass-permissions")));
+    }
+
+    /** Added in 1.2.0; a config from before has no such section, which means the rule is off. */
+    private static OriginGateConfig.AccountsRule accountsPerIp(YamlSection rules) throws ConfigException {
+        if (!rules.has("accounts-per-ip")) return new OriginGateConfig.AccountsRule(false, 3);
+        YamlSection section = rules.section("accounts-per-ip");
+        section.allowOnly("enabled", "max");
+        return new OriginGateConfig.AccountsRule(section.bool("enabled"), section.integer("max", 1, 100));
     }
 
     /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */

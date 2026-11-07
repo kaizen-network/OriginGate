@@ -433,6 +433,7 @@ public final class OriginGateConfig {
 
     public static final class Rules {
         private final AddressRule denyAddresses;
+        private final AccountsRule accountsPerIp;
         private final NetworkRule denyNetworks;
         private final NetworkRule allowNetworks;
         private final BasicRule vpn;
@@ -440,9 +441,10 @@ public final class OriginGateConfig {
         private final BasicRule hosting;
         private final CountryRule country;
 
-        public Rules(AddressRule denyAddresses, NetworkRule denyNetworks, NetworkRule allowNetworks, BasicRule vpn, ProxyRule proxy,
+        public Rules(AddressRule denyAddresses, AccountsRule accountsPerIp, NetworkRule denyNetworks, NetworkRule allowNetworks, BasicRule vpn, ProxyRule proxy,
                      BasicRule hosting, CountryRule country) {
             this.denyAddresses = denyAddresses;
+            this.accountsPerIp = accountsPerIp;
             this.denyNetworks = denyNetworks;
             this.allowNetworks = allowNetworks;
             this.vpn = vpn;
@@ -452,6 +454,7 @@ public final class OriginGateConfig {
         }
 
         public AddressRule denyAddresses() { return denyAddresses; }
+        public AccountsRule accountsPerIp() { return accountsPerIp; }
         public NetworkRule denyNetworks() { return denyNetworks; }
         public NetworkRule allowNetworks() { return allowNetworks; }
         public BasicRule vpn() { return vpn; }
@@ -470,6 +473,7 @@ public final class OriginGateConfig {
             if (!(other instanceof Rules)) return false;
             Rules that = (Rules) other;
             return java.util.Objects.equals(denyAddresses, that.denyAddresses)
+                && java.util.Objects.equals(accountsPerIp, that.accountsPerIp)
                 && java.util.Objects.equals(denyNetworks, that.denyNetworks)
                 && java.util.Objects.equals(allowNetworks, that.allowNetworks)
                 && java.util.Objects.equals(vpn, that.vpn)
@@ -477,9 +481,32 @@ public final class OriginGateConfig {
                 && java.util.Objects.equals(hosting, that.hosting)
                 && java.util.Objects.equals(country, that.country);
         }
-        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, denyNetworks, allowNetworks, vpn, proxy, hosting, country); }
-        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "denyNetworks=" + denyNetworks + ", " + "allowNetworks=" + allowNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, accountsPerIp, denyNetworks, allowNetworks, vpn, proxy, hosting, country); }
+        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "accountsPerIp=" + accountsPerIp + ", " + "denyNetworks=" + denyNetworks + ", " + "allowNetworks=" + allowNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
  }
+
+    /** accounts-per-ip: {@code max} is the most players online at once from one address. */
+    public static final class AccountsRule {
+        private final boolean enabled;
+        private final int max;
+
+        public AccountsRule(boolean enabled, int max) {
+            this.enabled = enabled;
+            this.max = max;
+        }
+
+        public boolean enabled() { return enabled; }
+        public int max() { return max; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof AccountsRule)) return false;
+            AccountsRule that = (AccountsRule) other;
+            return enabled == that.enabled && max == that.max;
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(enabled, max); }
+        @Override public String toString() { return "AccountsRule[" + "enabled=" + enabled + ", " + "max=" + max + "]"; }
+    }
 
     public static final class AddressRule {
         private final boolean enabled;

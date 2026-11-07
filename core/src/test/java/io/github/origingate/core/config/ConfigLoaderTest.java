@@ -125,8 +125,20 @@ class ConfigLoaderTest {
         TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
         OriginGateConfig legacy = ConfigLoader.load(directory);
         assertFalse(legacy.rules().allowNetworks().enabled());
+        assertFalse(legacy.rules().accountsPerIp().enabled());
         Messages messages = Messages.load(directory);
         assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
+    }
+
+    @Test void accountsPerIpChecksItsLimit() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory);
+        assertFalse(config.rules().accountsPerIp().enabled());
+        assertEquals(3, config.rules().accountsPerIp().max());
+        assertEquals(1, TestSupport.config(directory, "rules.accounts-per-ip.max", 1).rules().accountsPerIp().max());
+        assertEquals(100, TestSupport.config(directory, "rules.accounts-per-ip.max", 100).rules().accountsPerIp().max());
+        assertEquals("rules.accounts-per-ip.max must be a whole number from 1 to 100", failure("rules.accounts-per-ip.max", 0));
+        assertEquals("rules.accounts-per-ip.max must be a whole number from 1 to 100", failure("rules.accounts-per-ip.max", 101));
     }
 
     @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {

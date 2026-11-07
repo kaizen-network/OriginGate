@@ -112,6 +112,13 @@ rules:
     # IP addresses or CIDR ranges, for example ["203.0.113.0/24"].
     list: []
     bypass-permissions: []
+  # Kicks a player when this many players are already online from the same IP address, for example bot accounts from
+  # one machine. Mobile carriers, schools, and families often share one address, so keep it off or set it generously.
+  # Put players who share an address on the allow list. Counts players on this server or proxy only.
+  accounts-per-ip:
+    enabled: false
+    # Most players online at once from one address (1-100).
+    max: 3
   # Kicks networks you list by AS number or name, for example a hosting company that VPN services rent from.
   # Works with every provider except maxmind, which has no network data.
   deny-networks:

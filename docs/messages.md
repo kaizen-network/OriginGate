@@ -12,20 +12,20 @@ Bukkit/Spigot/Paper and BungeeCord receive messages as legacy text, so hover and
 
 | Key | When |
 | --- | --- |
-| `kick.deny-list`, `kick.deny-addresses`, `kick.deny-networks`, `kick.vpn`, `kick.proxy`, `kick.hosting`, `kick.country` | Kick screen for that rule |
+| `kick.deny-list`, `kick.deny-addresses`, `kick.accounts-per-ip`, `kick.deny-networks`, `kick.vpn`, `kick.proxy`, `kick.hosting`, `kick.country` | Kick screen for that rule |
 | `kick.lookup-failure` | Kick screen when `on-lookup-failure: deny`, or `on-budget-exceeded: deny` for a login over the lookup budget |
 | `bypass-notice` | Chat message after joining the first server through a rule bypass. Empty turns it off |
 | `alerts.denied`, `alerts.bypassed` | Chat alert to staff. Empty turns it off |
 | `alerts.lookup-problem`, `alerts.lookup-recovered` | Chat alert to staff when lookups start failing and when they work again. The text is in `<message>`; the other placeholders do not apply. Empty turns it off |
 
-Messages added in 1.1.0 (`kick.deny-networks`, `kick.hosting`, `alerts.lookup-problem`, and `alerts.lookup-recovered`) and 1.2.0 (`kick.deny-list`) may be missing from an older `messages.yml`. Then the bundled text is used.
+Messages added in 1.1.0 (`kick.deny-networks`, `kick.hosting`, `alerts.lookup-problem`, and `alerts.lookup-recovered`) and 1.2.0 (`kick.deny-list` and `kick.accounts-per-ip`) may be missing from an older `messages.yml`. Then the bundled text is used.
 
 ## Placeholders
 
 | Placeholder | Value |
 | --- | --- |
 | `<username>`, `<uuid>`, `<ip>` | The connecting player |
-| `<rule>` | `deny-list`, `deny-addresses`, `deny-networks`, `vpn`, `proxy`, `hosting`, `country`, or `lookup-failure` |
+| `<rule>` | `deny-list`, `deny-addresses`, `accounts-per-ip`, `deny-networks`, `vpn`, `proxy`, `hosting`, `country`, or `lookup-failure` |
 | `<time>` | Unix time in seconds |
 | `<provider>`, `<country>`, `<country_code>`, `<city>`, `<region>`, `<type>` | Lookup data |
 | `<organisation>` | The VPN operator's name when it is longer than 3 characters, otherwise the network organisation |
