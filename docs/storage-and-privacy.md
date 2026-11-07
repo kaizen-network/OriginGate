@@ -6,9 +6,9 @@ order: 9
 
 # Storage and privacy
 
-## Table
+## Tables
 
-OriginGate creates its own table, `origingate_ip_cache`, on start:
+OriginGate creates its own table for lookups, `origingate_ip_cache`, on start:
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -21,6 +21,8 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 | `checked_at` | `BIGINT` | Unix seconds, indexed |
 
 Saves replace the previous row for the same IP in one step, in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
+
+List entries (names, IPs, notes, and who added them) are kept until they are removed or expire. `origingate cache clear` does not touch them.
 
 The allow and deny lists use a second table, `origingate_list`, in the same database. It is created together with the first one:
 

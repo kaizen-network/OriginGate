@@ -8,7 +8,7 @@ order: 4
 
 `config.yml` is in `plugins/origingate/`. Run `origingate reload` after editing. A file with a mistake is refused, the old settings stay active, and the reply names the setting, for example `lookup.wait-millis must be a whole number from 1000 to 20000`. Unknown settings are refused too, so typos are caught.
 
-Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) and 1.2.0 (`rules.allow-networks`) are optional: a config without them works as it did in 1.0.0.
+Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) and 1.2.0 (`rules.allow-networks`, `rules.accounts-per-ip`, and `discord`) are optional: a config without them works as it did in 1.0.0. To use one of the new sections, copy the whole section from the default config: a section with a missing inner key is refused.
 
 ## Settings
 
