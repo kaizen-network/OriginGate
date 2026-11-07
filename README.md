@@ -8,6 +8,7 @@ OriginGate checks where each player connects from on Bukkit/Spigot/Paper, Bungee
 - Lookups are saved (SQLite, or MySQL/MariaDB), so each IP is looked up at most once every 30 days by default.
 - Rules for VPNs, proxies, hosting networks, countries, and networks or addresses you list. Every rule is optional and has its own bypass permissions.
 - Staff alerts when a lookup provider stops answering, `origingate status`, and a lookups-per-minute limit against bot floods.
+- Allow and deny lists you manage with commands, entries that can expire, a limit on players per address, and an optional Discord webhook.
 - Dry-run mode shows what would happen without kicking anyone.
 
 ## Requirements

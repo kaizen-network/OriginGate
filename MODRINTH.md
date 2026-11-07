@@ -8,6 +8,8 @@ Kick players who connect through a VPN or proxy, or from a country you do not al
 - Every rule has its own bypass permissions, plus a global bypass by player, IP, or permission.
 - IP data from proxycheck.io, IPHub, ip-api.com, IPinfo, or a local MaxMind GeoLite2 file. Combine them, with fallback to the next one.
 - Each IP is looked up at most once every 30 days by default, saved in SQLite or MySQL/MariaDB.
+- Allow and deny lists you manage with `origingate allow` and `origingate deny`, with optional expiry, and a rule that lets in networks you list by AS number.
+- A limit on players online from one address (`accounts-per-ip`), and an optional Discord webhook for kicks and bypasses.
 - Dry-run mode shows who would be kicked, without kicking anyone.
 - One console line per check, daily log files, and staff alerts in chat, including when a lookup provider stops answering. `origingate status` shows how lookups are doing.
 - A lookups-per-minute limit keeps bot floods from using up your provider's daily quota.

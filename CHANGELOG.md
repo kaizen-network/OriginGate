@@ -4,7 +4,7 @@
 
 ### Upgrading from 1.1.x
 
-Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working unchanged and behave as before: every new setting is optional and off when missing. To use the new features, copy the new settings from the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml).
+Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working unchanged and behave as before: every new setting is optional and off when missing, and missing new messages use the bundled text. The new `origingate_list` table is created automatically. To use the new features, copy the new settings from the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml).
 
 ### Added
 
