@@ -5,7 +5,7 @@ Kick players who connect through a VPN or proxy, or from a country you do not al
 ## Features
 
 - Rules for VPNs, proxies (with allowed countries), hosting and datacenter networks, country allowlists or denylists, networks by AS number or name, and IP addresses or ranges you list.
-- Every rule has its own bypass permissions, plus a global bypass by player, IP, or permission.
+- Most rules have their own bypass permissions (the deny-list and accounts-per-ip rules have none, and allow-networks is an allow rule), plus a global bypass by player, IP, or permission.
 - IP data from proxycheck.io, IPHub, ip-api.com, IPinfo, or a local MaxMind GeoLite2 file. Combine them, with fallback to the next one.
 - Each IP is looked up at most once every 30 days by default, saved in SQLite or MySQL/MariaDB.
 - Allow and deny lists you manage with `origingate allow` and `origingate deny`, with optional expiry, and a rule that lets in networks you list by AS number.

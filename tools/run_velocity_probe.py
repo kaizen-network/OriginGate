@@ -721,22 +721,29 @@ def run_120(probe, backend):
     probe.ok("deny add kicks a clean address at login with no lookup request, and other addresses still join")
 
     client = Client("ProbeOnline", source="127.0.0.43")
+    held = None
     try:
         assert client.login()[0] == "joined"
         backend.settimeout(10)
         held = backend.accept()[0]  # Keep it open: a closed backend connection would disconnect the player.
         probe.command("origingate deny add ProbeOnline", "Added probeonline to the deny list")
         client.sock.settimeout(10)
-        disconnected = False
+        reason = b""
         try:
-            while not disconnected:
-                disconnected = client.receive()[0] == 2  # Disconnect in the configuration state.
-        except (EOFError, OSError):
-            disconnected = True  # The connection closed.
-        assert disconnected, "ProbeOnline was not disconnected"
+            while True:
+                packet, body = client.receive()
+                if packet == 2:  # Disconnect in the configuration state; its text is NBT, so look for the words.
+                    reason = body
+                    break
+        except TimeoutError:
+            raise AssertionError("ProbeOnline stayed connected for 10 seconds after deny add")
+        except (EOFError, ConnectionError):
+            pass  # The connection closed without a reason.
+        assert b"not allowed on this server" in reason, f"ProbeOnline was not disconnected with the deny-list message: {reason!r}"
     finally:
         client.close()
-        held.close()
+        if held:
+            held.close()
     probe.command("origingate deny remove ProbeOnline", "Removed probeonline from the deny list")
     drain(backend)
     probe.ok("deny add of an online player disconnects them")
@@ -745,6 +752,7 @@ def run_120(probe, backend):
     probe.command("origingate reload", "OriginGate reloaded.")
     probe.fresh("clean")
     first = Client("ProbeFirst", source="127.0.0.51")
+    held = None
     try:
         assert first.login()[0] == "joined"
         backend.settimeout(10)
@@ -754,7 +762,8 @@ def run_120(probe, backend):
         expect_join(backend, "ProbeThird", source="127.0.0.52")
     finally:
         first.close()
-        held.close()
+        if held:
+            held.close()
     drain(backend)
     probe.ok("accounts-per-ip with max 1 kicks a second player from the same address and lets one from another address in")
     probe.write_config()
