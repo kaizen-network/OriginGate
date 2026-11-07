@@ -89,7 +89,11 @@ public final class DiscordWebhook implements AutoCloseable {
                         .append(escape(Text.dash(info.country()))).append(')');
             }
             if (showIp) line.append(" IP ").append(Addresses.text(attempt.address()));
-            if (decision.caution() != null) line.append(" Caution: ").append(text(decision.caution())).append('.');
+            if (decision.caution() != null) {
+                // End the sentence before it, so the caution does not read as part of the note.
+                if (line.charAt(line.length() - 1) != '.') line.append('.');
+                line.append(" Caution: ").append(text(decision.caution())).append('.');
+            }
             enqueue(line.toString());
         } catch (RuntimeException ex) {
             // A webhook problem must never reach a login.

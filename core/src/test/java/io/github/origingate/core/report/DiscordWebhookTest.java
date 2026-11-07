@@ -179,7 +179,15 @@ class DiscordWebhookTest {
         hook.decision(TestSupport.player("Kai", "203.0.113.7"),
                 new Decision(Decision.Outcome.BYPASS, Rule.VPN, "flagged as VPN", null, false, "anyone can use this name"));
         hook.flush();
-        assertEquals("Let in **Kai** with a vpn bypass: flagged as VPN Caution: anyone can use this name.", content(0));
+        assertEquals("Let in **Kai** with a vpn bypass: flagged as VPN. Caution: anyone can use this name.", content(0));
+    }
+
+    @Test void cautionAfterAFullStopGetsNoSecondOne() {
+        DiscordWebhook hook = webhook(false);
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"),
+                new Decision(Decision.Outcome.BYPASS, Rule.VPN, "trusted tester.", null, false, "anyone can use this name"));
+        hook.flush();
+        assertEquals("Let in **Kai** with a vpn bypass: trusted tester. Caution: anyone can use this name.", content(0));
     }
 
     @Test void escapesMarkdownAndBlocksMentions() {
