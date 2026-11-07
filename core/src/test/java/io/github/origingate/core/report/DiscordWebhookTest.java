@@ -116,8 +116,37 @@ class DiscordWebhookTest {
         DiscordWebhook hook = webhook(false);
         hook.decision(TestSupport.player("Kai", "203.0.113.7"), decision(Decision.Outcome.DENY, Rule.VPN, "flagged as VPN", answer("Example Org"), true));
         hook.decision(TestSupport.player("Kai", "203.0.113.7"), decision(Decision.Outcome.ALLOW, null, null, null, false));
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"), decision(Decision.Outcome.BYPASS, Rule.VPN, "flagged as VPN", answer("Example Org"), true));
         hook.flush();
         assertEquals(0, bodies.size());
+    }
+
+    @Test void addressesInTextAreHiddenUnlessShowIpIsOn() {
+        String[] notes = {"address is on the deny list (203.0.113.7)", "No provider answered the VPN check for 203.0.113.7",
+                "no data for 2001:db8::7.", "range 203.0.113.0/24 and 2001:db8::/32 at 12:30"};
+        DiscordWebhook hook = webhook(false);
+        for (String note : notes) hook.decision(TestSupport.player("Kai", "203.0.113.7"), kick(note));
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"), new Decision(Decision.Outcome.BYPASS, Rule.VPN, null, null, false, "from 203.0.113.7"));
+        hook.alert(false, "proxycheck.io response has no data for 203.0.113.7");
+        hook.flush();
+        String hidden = content(0);
+        assertFalse(hidden.contains("203.0.113") || hidden.contains("2001") || hidden.contains("db8"), hidden);
+        assertTrue(hidden.contains("IP hidden") && hidden.contains("at 12:30"), hidden);
+        assertTrue(hidden.contains("Alert: proxycheck.io response has no data for IP hidden"), hidden);
+        hook.close();
+        DiscordWebhook shown = webhook(true);
+        for (String note : notes) shown.decision(TestSupport.player("Kai", "203.0.113.7"), kick(note));
+        shown.alert(false, "proxycheck.io response has no data for 203.0.113.7");
+        shown.flush();
+        String text = content(1);
+        assertTrue(text.contains("203.0.113.7") && text.contains("2001:db8::7") && !text.contains("IP hidden"), text);
+    }
+
+    @Test void bodySuppressesEmbeds() {
+        DiscordWebhook hook = webhook(false);
+        hook.alert(false, "see https://example.com/x");
+        hook.flush();
+        assertEquals(4, post(0).get("flags").getAsInt());
     }
 
     @Test void showIpAddsAddress() {
