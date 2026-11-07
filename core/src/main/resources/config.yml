@@ -166,6 +166,14 @@ alerts:
   # provider stops answering or the lookup budget is used up, and one when that is over.
   permissions: ["origingate.alerts"]
 
+# Posts kicks, bypasses, and lookup alerts (what staff with an alert permission see in chat) to a Discord channel.
+# Posts within 5 seconds are combined into one, so a flood of kicks becomes a short summary.
+discord:
+  # The channel's webhook URL, from the channel's settings under Integrations, Webhooks. Leave empty to turn off.
+  webhook-url: ""
+  # Show players' IP addresses in posts. Off by default, so addresses stay on this server.
+  show-ip: false
+
 # Write every login where a rule matched or the lookup failed to daily files in the logs folder.
 log-file: true
 # Log files older than this many days (0-3650) are deleted. 0 keeps them forever.

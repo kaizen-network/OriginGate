@@ -10,8 +10,10 @@ public final class HttpRequest {
     final Duration timeout;
     final String method;
     final Map<String, String> headers;
+    /** Null unless the method is POST. */
+    final byte[] body;
     private HttpRequest(Builder builder) {
-        uri = builder.uri; timeout = builder.timeout; method = builder.method;
+        uri = builder.uri; timeout = builder.timeout; method = builder.method; body = builder.body;
         headers = Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
     }
     public static Builder newBuilder(URI uri) { return new Builder(uri); }
@@ -19,6 +21,7 @@ public final class HttpRequest {
         private final URI uri;
         private Duration timeout = Duration.ofSeconds(30);
         private String method = "GET";
+        private byte[] body;
         private final Map<String,String> headers = new LinkedHashMap<>();
         private Builder(URI uri) {
             this.uri = Objects.requireNonNull(uri);
@@ -30,11 +33,13 @@ public final class HttpRequest {
             timeout = value; return this;
         }
         public Builder header(String name, String value) { headers.put(name, value); return this; }
-        public Builder GET() { method = "GET"; return this; }
+        public Builder GET() { method = "GET"; body = null; return this; }
+        /** Sends {@code content} as the request body. The caller sets Content-Type. */
+        public Builder POST(byte[] content) { method = "POST"; body = content.clone(); return this; }
         /** GET or HEAD: requests have no body. */
         public Builder method(String value) {
             if (!"GET".equals(value) && !"HEAD".equals(value)) throw new IllegalArgumentException("Unsupported HTTP method");
-            method = value; return this;
+            method = value; body = null; return this;
         }
         public HttpRequest build() { return new HttpRequest(this); }
     }

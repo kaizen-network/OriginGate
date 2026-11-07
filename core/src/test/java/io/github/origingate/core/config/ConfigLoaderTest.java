@@ -126,9 +126,29 @@ class ConfigLoaderTest {
         OriginGateConfig legacy = ConfigLoader.load(directory);
         assertFalse(legacy.rules().allowNetworks().enabled());
         assertFalse(legacy.rules().accountsPerIp().enabled());
+        assertFalse(legacy.discord().enabled());
+        assertEquals("", legacy.discord().webhookUrl());
         Messages messages = Messages.load(directory);
         assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
         assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
+    }
+
+    @Test void discordUrlMustBeHttps() throws Exception {
+        OriginGateConfig off = TestSupport.config(directory);
+        assertFalse(off.discord().enabled());
+        assertFalse(off.discord().showIp());
+        String url = "https://discord.com/api/webhooks/123/secret-token";
+        OriginGateConfig on = TestSupport.config(directory, "discord.webhook-url", url, "discord.show-ip", true);
+        assertTrue(on.discord().enabled());
+        assertEquals(url, on.discord().webhookUrl());
+        assertTrue(on.discord().showIp());
+        assertFalse(on.discord().toString().contains("secret-token"));
+        assertFalse(on.toString().contains("secret-token"));
+        String message = failure("discord.webhook-url", "http://discord.com/api/webhooks/123/secret-token");
+        assertTrue(message.contains("discord.webhook-url") && message.contains("https"), message);
+        assertFalse(message.contains("secret-token"));
+        assertTrue(failure("discord.webhook-url", "not a url").contains("discord.webhook-url"));
+        assertTrue(failure("discord.extra", true).contains("Unknown setting"));
     }
 
     @Test void accountsPerIpChecksItsLimit() throws Exception {

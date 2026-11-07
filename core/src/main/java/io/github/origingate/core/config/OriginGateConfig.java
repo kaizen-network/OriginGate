@@ -19,8 +19,9 @@ public final class OriginGateConfig {
     private final List<String> alertPermissions;
     private final boolean logFile;
     private final int logFileKeepDays;
+    private final Discord discord;
 
-    public OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup lookup, Storage storage, Bypass bypass, Rules rules, List<String> alertPermissions, boolean logFile, int logFileKeepDays) {
+    public OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup lookup, Storage storage, Bypass bypass, Rules rules, List<String> alertPermissions, boolean logFile, int logFileKeepDays, Discord discord) {
         this.dryRun = dryRun;
         this.consoleLog = consoleLog;
         this.lookup = lookup;
@@ -30,6 +31,7 @@ public final class OriginGateConfig {
         this.alertPermissions = alertPermissions;
         this.logFile = logFile;
         this.logFileKeepDays = logFileKeepDays;
+        this.discord = discord;
     }
 
     public boolean dryRun() { return dryRun; }
@@ -41,6 +43,7 @@ public final class OriginGateConfig {
     public List<String> alertPermissions() { return alertPermissions; }
     public boolean logFile() { return logFile; }
     public int logFileKeepDays() { return logFileKeepDays; }
+    public Discord discord() { return discord; }
 
     @Override public boolean equals(Object other) {
         if (this == other) return true;
@@ -54,9 +57,34 @@ public final class OriginGateConfig {
                 && java.util.Objects.equals(rules, that.rules)
                 && java.util.Objects.equals(alertPermissions, that.alertPermissions)
                 && java.util.Objects.equals(logFile, that.logFile)
-                && java.util.Objects.equals(logFileKeepDays, that.logFileKeepDays);
+                && java.util.Objects.equals(logFileKeepDays, that.logFileKeepDays)
+                && java.util.Objects.equals(discord, that.discord);
     }
-    @Override public int hashCode() { return java.util.Objects.hash(dryRun, consoleLog, lookup, storage, bypass, rules, alertPermissions, logFile, logFileKeepDays); }
+    @Override public int hashCode() { return java.util.Objects.hash(dryRun, consoleLog, lookup, storage, bypass, rules, alertPermissions, logFile, logFileKeepDays, discord); }
+
+    /** The Discord webhook. {@code webhookUrl} is a secret: empty when off, and never part of {@link #toString}. */
+    public static final class Discord {
+        private final String webhookUrl;
+        private final boolean showIp;
+
+        public Discord(String webhookUrl, boolean showIp) {
+            this.webhookUrl = webhookUrl;
+            this.showIp = showIp;
+        }
+
+        public String webhookUrl() { return webhookUrl; }
+        public boolean showIp() { return showIp; }
+        public boolean enabled() { return !webhookUrl.isEmpty(); }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Discord)) return false;
+            Discord that = (Discord) other;
+            return webhookUrl.equals(that.webhookUrl) && showIp == that.showIp;
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(webhookUrl, showIp); }
+        @Override public String toString() { return "Discord[" + "webhookUrl=" + (enabled() ? "<hidden>" : "") + ", " + "showIp=" + showIp + "]"; }
+    }
 
 
     /** How much the console shows per login. Each level includes the ones before it. */

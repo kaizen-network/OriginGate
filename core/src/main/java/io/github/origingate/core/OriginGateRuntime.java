@@ -11,6 +11,7 @@ import io.github.origingate.core.lookup.LookupService;
 import io.github.origingate.core.lookup.MemoryCache;
 import io.github.origingate.core.lookup.Providers;
 import io.github.origingate.core.report.DecisionFile;
+import io.github.origingate.core.report.DiscordWebhook;
 import io.github.origingate.core.rules.Gate;
 import io.github.origingate.core.rules.OnlineCount;
 import io.github.origingate.core.storage.IpStorage;
@@ -19,6 +20,7 @@ import io.github.origingate.core.storage.SqliteUnavailableException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import io.github.origingate.core.net.HttpTransport;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,6 +55,8 @@ public final class OriginGateRuntime implements AutoCloseable {
     private final Gate gate;
     private final AccessLists lists;
     private final DecisionFile decisionFile;
+    /** Null when {@code discord.webhook-url} is empty. */
+    private volatile DiscordWebhook webhook;
     private final Clock clock;
     private final LookupStats stats;
     /** False once replaced or closed, so a retired runtime sends no more alerts. */
@@ -65,6 +69,7 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     private OriginGateRuntime(OriginGateConfig config, Messages messages, IpStorage storage, HttpTransport http,
                               Providers providers, ThreadPoolExecutor workers, Gate gate, AccessLists lists, DecisionFile decisionFile,
+                              DiscordWebhook webhook,
                               Clock clock, LookupStats stats, AtomicBoolean current, String storageName,
                               String storageProblem) {
         this.config = config;
@@ -76,6 +81,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         this.gate = gate;
         this.lists = lists;
         this.decisionFile = decisionFile;
+        this.webhook = webhook;
         this.clock = clock;
         this.stats = stats;
         this.current = current;
@@ -168,8 +174,11 @@ public final class OriginGateRuntime implements AutoCloseable {
         boolean persistent = storage instanceof ListTable;
         AccessLists lists = AccessLists.load(persistent ? (ListTable) storage : ListTable.memory(), persistent, clock, workers, log);
         DecisionFile decisionFile = config.logFile() ? new DecisionFile(dataDirectory.resolve("logs"), clock) : null;
+        DiscordWebhook webhook = config.discord().enabled()
+                ? new DiscordWebhook(URI.create(config.discord().webhookUrl()), config.discord().showIp(), http, log, "OriginGate/" + VERSION)
+                : null;
         return new OriginGateRuntime(config, messages, storage, http, providers, workers,
-                new Gate(config, lookups, log, namesUnverified, lists, online), lists, decisionFile, clock, stats, current, storageName, storageProblem);
+                new Gate(config, lookups, log, namesUnverified, lists, online), lists, decisionFile, webhook, clock, stats, current, storageName, storageProblem);
     }
 
     private static java.util.concurrent.ThreadFactory threads() {
@@ -262,6 +271,7 @@ public final class OriginGateRuntime implements AutoCloseable {
         lines.add("Memory cache: " + lookups.cache().size() + " entries. Storage: " + storageName
                 + (storageProblem == null ? "" : " (" + storageProblem + ")"));
         lines.add("Lists: " + lists.count(ListEntry.Kind.ALLOW) + " allow and " + lists.count(ListEntry.Kind.DENY) + " deny entries");
+        lines.add("Discord webhook: " + (webhook == null ? "off" : "on"));
         lines.add("Providers (" + providers.chain().describe() + "):");
         for (String line : providers.chain().status()) lines.add("  " + line);
         lines.add("On lookup failure: " + config.lookup().onFailure().name().toLowerCase(java.util.Locale.ROOT)
@@ -272,6 +282,16 @@ public final class OriginGateRuntime implements AutoCloseable {
 
     /** For the startup line, for example "country from maxmind, proxycheck | vpn from proxycheck". */
     public String lookupSummary() { return providers.chain().describe(); }
+
+    /** Null when {@code discord.webhook-url} is empty. */
+    public DiscordWebhook webhook() { return webhook; }
+
+    /** For tests: swaps in a webhook that posts to a local server, since the config only accepts https. */
+    void attachWebhook(DiscordWebhook replacement) {
+        DiscordWebhook old = webhook;
+        webhook = replacement;
+        if (old != null) old.close();
+    }
 
     /** Null when {@code log-file: false}. */
     public DecisionFile decisionFile() { return decisionFile; }
@@ -314,6 +334,8 @@ public final class OriginGateRuntime implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
         providers.close();
+        DiscordWebhook hook = webhook;
+        if (hook != null) hook.close();
         http.close();
         storage.close();
     }

@@ -61,7 +61,7 @@ public final class ConfigLoader {
         Path root = dataDirectory.toAbsolutePath().normalize();
         YamlSection config = YamlSection.load(root.resolve("config.yml"));
         config.allowOnly("config-version", "dry-run", "console-log", "lookup", "storage", "bypass", "rules", "alerts", "log-file",
-                "log-file-keep-days");
+                "log-file-keep-days", "discord");
         config.integer("config-version", 1, 1);
         Lookup lookup = lookup(root, config.section("lookup"));
         Rules rules = rules(config.section("rules"));
@@ -84,7 +84,29 @@ public final class ConfigLoader {
         }
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
                 lookup, storage(root, config.section("storage")), bypass(config.section("bypass")), rules,
-                alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650));
+                alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650),
+                discord(config));
+    }
+
+    /** Added in 1.2.0; a config from before has no such section, which means the webhook is off. */
+    private static OriginGateConfig.Discord discord(YamlSection config) throws ConfigException {
+        if (!config.has("discord")) return new OriginGateConfig.Discord("", false);
+        YamlSection section = config.section("discord");
+        section.allowOnly("webhook-url", "show-ip");
+        String url = section.text("webhook-url", 0, 512).trim();
+        boolean showIp = section.bool("show-ip");
+        if (url.isEmpty()) return new OriginGateConfig.Discord("", showIp);
+        // The URL is a secret, so no message here repeats it.
+        java.net.URI uri;
+        try {
+            uri = new java.net.URI(url);
+        } catch (java.net.URISyntaxException ex) {
+            throw new ConfigException(section.key("webhook-url") + " is not a valid URL");
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            throw new ConfigException(section.key("webhook-url") + " must be an https URL, or empty to turn the webhook off");
+        }
+        return new OriginGateConfig.Discord(url, showIp);
     }
 
     private static Lookup lookup(Path root, YamlSection lookup) throws ConfigException {

@@ -2,6 +2,7 @@ package io.github.origingate.core;
 
 import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.report.DecisionLine;
+import io.github.origingate.core.report.DiscordWebhook;
 import io.github.origingate.core.rules.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -57,12 +58,20 @@ public final class RuntimeController implements AutoCloseable {
             @Override protected void sendProblem(String message) {
                 log.warn("Alert: " + message, null);
                 OriginGateRuntime active = runtime;
-                if (active != null) staff.send(active, active.messages().alertLookupProblem(), message);
+                if (active != null) {
+                    staff.send(active, active.messages().alertLookupProblem(), message);
+                    DiscordWebhook webhook = active.webhook();
+                    if (webhook != null) webhook.alert(false, message);
+                }
             }
             @Override protected void sendRecovered(String message) {
                 log.info("Alert: " + message);
                 OriginGateRuntime active = runtime;
-                if (active != null) staff.send(active, active.messages().alertLookupRecovered(), message);
+                if (active != null) {
+                    staff.send(active, active.messages().alertLookupRecovered(), message);
+                    DiscordWebhook webhook = active.webhook();
+                    if (webhook != null) webhook.alert(true, message);
+                }
             }
         };
         reports.allowCoreThreadTimeOut(true);
@@ -130,6 +139,9 @@ public final class RuntimeController implements AutoCloseable {
     /** Decision logging never blocks platform events or the shared lookup deadline thread. */
     public void report(OriginGateRuntime active, LoginAttempt attempt, Decision decision) {
         if (closed) return;
+        // Before the early return below: the webhook posts kicks and bypasses whatever the console and log file show.
+        DiscordWebhook webhook = active.webhook();
+        if (webhook != null) webhook.decision(attempt, decision);
         if (!active.config().consoleLog().shows(decision) && (active.decisionFile() == null || decision.rule() == null)) return;
         try {
             reports.execute(() -> {

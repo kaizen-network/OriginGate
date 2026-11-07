@@ -50,12 +50,33 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
 | `rules.country` | off | `mode: allowlist` or `denylist`, `countries` (codes), `bypass-permissions: [origingate.bypass.country]` |
 | `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts, and lookup problems (one message when it starts, one when it is over) |
+| `discord.webhook-url` | empty (off) | A Discord channel's webhook URL (https only). Posts kicks, bypasses, and lookup problems and recoveries, the same events staff with an alert permission see in chat. Dry-run kicks are not posted. The URL is a secret: it is never logged or shown. See [Discord webhook](#discord-webhook) |
+| `discord.show-ip` | `false` | Add each player's IP address to Discord posts |
 | `log-file` | `true` | Daily log files of kicks, bypasses, and lookup failures |
 | `log-file-keep-days` | `30` | 0 to 3650. Log files older than this are deleted. `0` keeps them forever |
 
 Country codes are ISO 3166-1 two-letter codes such as `US`, `GB`, `ID`, in any case, plus `XK` for Kosovo. Unknown codes are refused.
 
 Changing `storage.type` takes effect on reload. Saved lookups are not copied between storage types.
+
+## Discord webhook
+
+Set `discord.webhook-url` to post to a Discord channel. Create the URL in the channel's settings under Integrations, then Webhooks. Reload with `origingate reload`. `origingate status` shows `Discord webhook: on` or `off`.
+
+Posts are combined: every 5 seconds, the lines queued since the last post go out as one message. A message shows up to 10 lines, then `And <n> more.` for the rest. That is at most 12 posts a minute, within Discord's limits.
+
+The lines are plain English and do not come from `messages.yml`:
+
+```
+Kicked **Kai** by the vpn rule: flagged as VPN (Example VPN / Example Org, Netherlands)
+Let in **Kai** with a vpn bypass: flagged as VPN (Example VPN / Example Org, Netherlands)
+Alert: provider proxycheck is paused
+Recovered: provider proxycheck is back
+```
+
+Player, provider, organisation, country, and note text is escaped so it cannot format the message, and posts never ping anyone. Lines longer than 190 characters are cut.
+
+A failed post never affects logins. The first failure logs one warning, without the URL, and the next success logs one line. Lines from a failed post are dropped, not sent again.
 
 ## Examples
 

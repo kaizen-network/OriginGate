@@ -14,6 +14,7 @@ Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working u
 - Commands `origingate allow` and `origingate deny` with `add <player|ip|cidr> [duration] [note]`, `remove`, and `list [page]`, with separate permissions `origingate.command.allow` and `origingate.command.deny`. `deny add` disconnects matching players who are online on that server.
 
 - `accounts-per-ip` rule: kicks a player when `max` players (1 to 100, default 3) are already online from exactly the same address, with the new `accounts-per-ip` message (`kick.accounts-per-ip`, bundled text is used when missing). It counts players on this server or proxy only, has no bypass permissions (use the allow list), and is off by default.
+- Discord webhook: set `discord.webhook-url` to post kicks, bypasses, and lookup problems and recoveries to a Discord channel. Posts within 5 seconds are combined, up to 10 lines each, then `And <n> more.`. Player and network text is escaped and posts never ping anyone. IP addresses are left out unless `discord.show-ip` is `true`. The URL must be https, is never logged, and the webhook is off while it is empty. `origingate status` shows `Discord webhook: on` or `off`.
 
 ## 1.1.1 (2026-11-07)
 
