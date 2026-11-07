@@ -8,7 +8,7 @@ order: 4
 
 `config.yml` is in `plugins/origingate/`. Run `origingate reload` after editing. A file with a mistake is refused, the old settings stay active, and the reply names the setting, for example `lookup.wait-millis must be a whole number from 1000 to 20000`. Unknown settings are refused too, so typos are caught.
 
-Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) are optional: a config without them works as it did in 1.0.0.
+Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) and 1.2.0 (`rules.allow-networks`) are optional: a config without them works as it did in 1.0.0.
 
 ## Settings
 
@@ -43,6 +43,7 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `bypass.addresses` | `[]` | IPs or CIDR ranges |
 | `rules.deny-addresses` | off | `list` of IPs or CIDR ranges, `bypass-permissions` |
 | `rules.deny-networks` | off | `asns` (AS numbers such as `AS64496`), `organisations` (text to look for in the network's provider, organisation, or VPN operator name, ignoring case, at least 3 characters), `bypass-permissions: [origingate.bypass.deny-networks]`. Works with every provider except `maxmind` |
+| `rules.allow-networks` | off | `asns` and `organisations`, like `deny-networks`, but no bypass permissions. Lets in a listed network when `vpn`, `proxy`, or `hosting` would kick it; `deny-networks` and `country` still apply. Works with every provider except `maxmind` |
 | `rules.vpn` | on | `bypass-permissions: [origingate.bypass.vpn]` |
 | `rules.proxy` | on | `allowed-countries` (codes), `bypass-permissions: [origingate.bypass.proxy]` |
 | `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
@@ -99,6 +100,16 @@ rules:
   hosting:
     enabled: true
     bypass-permissions: ["origingate.bypass.hosting"]
+```
+
+To let in a network that a provider wrongly flags, such as a school or a mobile carrier, list it under `allow-networks`. It only skips the `vpn`, `proxy`, and `hosting` rules, and the log shows `rule=allow-networks` when it did.
+
+```yaml
+rules:
+  allow-networks:
+    enabled: true
+    asns: [AS64500]
+    organisations: ["Example School"]
 ```
 
 Hosting and datacenter networks are where VPN services and bots rent their servers, so the hosting rule catches many that no provider flags as a VPN. It also catches players who play through a cloud desktop or a hosted VPN of their own; give them `origingate.bypass.hosting`. Try it with `dry-run: true` first.

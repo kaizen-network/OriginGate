@@ -276,6 +276,58 @@ class GateTest {
         assertEquals(Outcome.DENY, decision.outcome(), "a VPN bypass does not cover a denied network");
     }
 
+    private static final String SCHOOL_IP = "198.51.100.77";
+
+    private void withSchool() {
+        provider.answer(new IpInfo(SCHOOL_IP, "Example Net", "Example School District", null, "Example City", "Example Region",
+                "Canada", "CA", "AS64511", false, true, "Residential", TestSupport.NOW));
+    }
+
+    @Test void allowNetworksLetsInFlaggedNetwork() throws Exception {
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(Rule.ALLOW_NETWORKS, decision.rule());
+        assertEquals("network is on the allow list (AS64500)", decision.note());
+    }
+
+    @Test void allowNetworksByOrganisationText() throws Exception {
+        withSchool();
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.organisations", List.of("Example School"));
+        Decision decision = run(gate, player("Kai", SCHOOL_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(Rule.ALLOW_NETWORKS, decision.rule());
+    }
+
+    @Test void allowNetworksKeepsCountryAndDenyNetworks() throws Exception {
+        Gate country = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"),
+                "rules.country.enabled", true, "rules.country.countries", List.of("CA"));
+        Decision byCountry = run(country, player("Kai", VPN_IP));
+        assertEquals(Outcome.DENY, byCountry.outcome());
+        assertEquals(Rule.COUNTRY, byCountry.rule());
+
+        Gate denied = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"),
+                "rules.deny-networks.enabled", true, "rules.deny-networks.asns", List.of("AS64500"));
+        Decision byNetwork = run(denied, player("Kai", VPN_IP));
+        assertEquals(Outcome.DENY, byNetwork.outcome());
+        assertEquals(Rule.DENY_NETWORKS, byNetwork.rule());
+    }
+
+    @Test void cleanAnswerFromAllowedNetworkHasNoRule() throws Exception {
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
+    }
+
+    @Test void matchSkipsExemptedRules() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, "rules.allow-networks.enabled", true,
+                "rules.allow-networks.asns", List.of("AS64500"));
+        assertFalse(Gate.match(config.rules(), info(VPN_IP, "Netherlands", "NL", true, true)).isPresent());
+        OriginGateConfig plain = TestSupport.config(directory);
+        assertTrue(Gate.match(plain.rules(), info(VPN_IP, "Netherlands", "NL", true, true)).isPresent());
+    }
+
     @Test void disabledRulesAreSkipped() throws Exception {
         Gate gate = gate("rules.vpn.enabled", false, "rules.proxy.enabled", false);
         Decision decision = run(gate, player("Alex", VPN_IP));

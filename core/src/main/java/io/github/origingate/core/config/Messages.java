@@ -3,7 +3,9 @@ package io.github.origingate.core.config;
 import io.github.origingate.core.rules.Rule;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 
 /** MiniMessage templates from messages.yml. Rendering is left to the platform. */
@@ -62,10 +64,10 @@ public final class Messages {
         YamlSection kick = messages.section("kick");
         YamlSection defaultKick = defaults.section("kick");
         Map<Rule, String> kicks = new EnumMap<>(Rule.class);
-        String[] names = new String[Rule.values().length];
-        for (Rule rule : Rule.values()) names[rule.ordinal()] = rule.id();
-        kick.allowOnly(names);
-        for (Rule rule : Rule.values()) kicks.put(rule, optional(kick, defaultKick, rule.id(), 1, 4096, rule.addedLater()));
+        List<String> names = new ArrayList<>();
+        for (Rule rule : Rule.values()) if (rule.kicks()) names.add(rule.id());
+        kick.allowOnly(names.toArray(new String[0]));
+        for (Rule rule : Rule.values()) if (rule.kicks()) kicks.put(rule, optional(kick, defaultKick, rule.id(), 1, 4096, rule.addedLater()));
         YamlSection alerts = messages.section("alerts");
         YamlSection defaultAlerts = defaults.section("alerts");
         alerts.allowOnly("denied", "bypassed", "lookup-problem", "lookup-recovered");

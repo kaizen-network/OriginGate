@@ -6,7 +6,7 @@
 
 - Config loading, bounds, unknown keys, paths, country codes, and redaction of passwords and keys
 - The unchanged 1.0.0 `config.yml` and `messages.yml` (in `core/src/test/resources/upgrade/`) loading and reading the same as the current defaults apart from the new settings
-- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip, deny-networks by ASN and organisation text before the vpn rule, and the hosting rule
+- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip, deny-networks by ASN and organisation text before the vpn rule, the hosting rule, and allow-networks skipping only vpn, proxy, and hosting
 - Country matching by code, including `XK`
 - Lookup order (memory, storage, provider), one request per IP, expiry, the answer arriving before the save, the 60-second storage pause, the 5-minute pause after a result without country, a refresh never joining a normal lookup, full queue
 - Lookup failure and timeout in both `on-lookup-failure` modes, dry-run, console log levels

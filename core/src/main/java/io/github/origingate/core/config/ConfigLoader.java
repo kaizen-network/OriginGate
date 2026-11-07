@@ -73,8 +73,13 @@ public final class ConfigLoader {
             throw new ConfigException("rules.hosting needs proxycheck or ip-api in lookup.vpn-from; the other providers "
                     + "do not report hosting networks separately");
         }
-        if (rules.denyNetworks().enabled() && lookup.inUse().equals(io.github.origingate.core.util.Compat.list("maxmind"))) {
+        boolean maxmindOnly = lookup.inUse().equals(io.github.origingate.core.util.Compat.list("maxmind"));
+        if (rules.denyNetworks().enabled() && maxmindOnly) {
             throw new ConfigException("rules.deny-networks needs a provider other than maxmind; MaxMind country files have "
+                    + "no ASN or organisation");
+        }
+        if (rules.allowNetworks().enabled() && maxmindOnly) {
+            throw new ConfigException("rules.allow-networks needs a provider other than maxmind; MaxMind country files have "
                     + "no ASN or organisation");
         }
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
@@ -237,7 +242,7 @@ public final class ConfigLoader {
     }
 
     private static Rules rules(YamlSection rules) throws ConfigException {
-        rules.allowOnly("deny-addresses", "deny-networks", "vpn", "proxy", "hosting", "country");
+        rules.allowOnly("deny-addresses", "deny-networks", "allow-networks", "vpn", "proxy", "hosting", "country");
         YamlSection deny = rules.section("deny-addresses");
         deny.allowOnly("enabled", "list", "bypass-permissions");
         YamlSection vpn = rules.section("vpn");
@@ -248,7 +253,8 @@ public final class ConfigLoader {
         country.allowOnly("enabled", "mode", "countries", "bypass-permissions");
         return new Rules(
                 new AddressRule(deny.bool("enabled"), ranges(deny, "list"), permissions(deny, "bypass-permissions")),
-                denyNetworks(rules),
+                networks(rules, "deny-networks", true),
+                networks(rules, "allow-networks", false),
                 new BasicRule(vpn.bool("enabled"), permissions(vpn, "bypass-permissions")),
                 new ProxyRule(proxy.bool("enabled"), countries(proxy, "allowed-countries"), permissions(proxy, "bypass-permissions")),
                 hosting(rules),
@@ -264,12 +270,13 @@ public final class ConfigLoader {
         return new BasicRule(hosting.bool("enabled"), permissions(hosting, "bypass-permissions"));
     }
 
-    /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */
-    private static NetworkRule denyNetworks(YamlSection rules) throws ConfigException {
+    /** deny-networks (1.1.0) and allow-networks (1.2.0); a config from before has no such section, which means the rule is off. */
+    private static NetworkRule networks(YamlSection rules, String name, boolean hasBypassPermissions) throws ConfigException {
         List<String> none = io.github.origingate.core.util.Compat.list();
-        if (!rules.has("deny-networks")) return new NetworkRule(false, none, none, none);
-        YamlSection section = rules.section("deny-networks");
-        section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
+        if (!rules.has(name)) return new NetworkRule(false, none, none, none);
+        YamlSection section = rules.section(name);
+        if (hasBypassPermissions) section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
+        else section.allowOnly("enabled", "asns", "organisations");
         List<String> asns = new ArrayList<>();
         for (String value : section.list("asns", MAX_LIST)) {
             String asn = value.toUpperCase(Locale.ROOT);
@@ -287,7 +294,8 @@ public final class ConfigLoader {
             organisations.add(value.toLowerCase(Locale.ROOT));
         }
         return new NetworkRule(section.bool("enabled"), io.github.origingate.core.util.Compat.listCopy(asns),
-                io.github.origingate.core.util.Compat.listCopy(organisations), permissions(section, "bypass-permissions"));
+                io.github.origingate.core.util.Compat.listCopy(organisations),
+                hasBypassPermissions ? permissions(section, "bypass-permissions") : none);
     }
 
     private static List<String> alerts(YamlSection alerts) throws ConfigException {

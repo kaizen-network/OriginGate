@@ -25,7 +25,8 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Decides whether a connection may join. Order: global bypass, deny-addresses, private-address skip,
- * lookup, then the deny-networks, vpn, proxy, hosting, and country rules. The first rule that matches decides.
+ * lookup, then the deny-networks, allow-networks, vpn, proxy, hosting, and country rules. The first rule that matches
+ * decides. A network on allow-networks skips only the vpn, proxy, and hosting rules.
  */
 public final class Gate {
     /** Added to name and permission bypasses where names are not checked, for the log line and staff alert. */
@@ -142,7 +143,7 @@ public final class Gate {
     /**
      * The first of the deny-networks, vpn, proxy, hosting, and country rules that matches {@code info}, or empty.
      * A match kicks unless the player has a bypass permission, so the lookup cache shares only such answers
-     * across an IPv6 /64.
+     * across an IPv6 /64. The vpn, proxy, and hosting rules are skipped for a network on allow-networks.
      */
     public static Optional<Match> match(OriginGateConfig.Rules rules, IpInfo info) {
         OriginGateConfig.NetworkRule networks = rules.denyNetworks();
@@ -153,12 +154,9 @@ public final class Gate {
                         "network is on the deny list (" + listed.get() + ")"));
             }
         }
-        if (rules.vpn().enabled() && info.vpn()) return Optional.of(new Match(Rule.VPN, rules.vpn().bypassPermissions(), "flagged as VPN"));
-        if (rules.proxy().enabled() && info.proxy() && !Countries.matchesAny(info, rules.proxy().allowedCountries())) {
-            return Optional.of(new Match(Rule.PROXY, rules.proxy().bypassPermissions(), "flagged as proxy"));
-        }
-        if (rules.hosting().enabled() && info.hosting()) {
-            return Optional.of(new Match(Rule.HOSTING, rules.hosting().bypassPermissions(), "hosting or datacenter network"));
+        if (!allowedNetwork(rules, info).isPresent()) {
+            Optional<Match> flagged = flagged(rules, info);
+            if (flagged.isPresent()) return flagged;
         }
         OriginGateConfig.CountryRule country = rules.country();
         if (country.enabled()) {
@@ -171,14 +169,39 @@ public final class Gate {
         return Optional.empty();
     }
 
-    /** Applies the deny-networks, vpn, proxy, hosting, and country rules to a finished lookup. */
+    /** The first of the vpn, proxy, and hosting rules that matches {@code info}, ignoring allow-networks. */
+    private static Optional<Match> flagged(OriginGateConfig.Rules rules, IpInfo info) {
+        if (rules.vpn().enabled() && info.vpn()) return Optional.of(new Match(Rule.VPN, rules.vpn().bypassPermissions(), "flagged as VPN"));
+        if (rules.proxy().enabled() && info.proxy() && !Countries.matchesAny(info, rules.proxy().allowedCountries())) {
+            return Optional.of(new Match(Rule.PROXY, rules.proxy().bypassPermissions(), "flagged as proxy"));
+        }
+        if (rules.hosting().enabled() && info.hosting()) {
+            return Optional.of(new Match(Rule.HOSTING, rules.hosting().bypassPermissions(), "hosting or datacenter network"));
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<String> allowedNetwork(OriginGateConfig.Rules rules, IpInfo info) {
+        OriginGateConfig.NetworkRule allow = rules.allowNetworks();
+        return allow.enabled() ? listedNetwork(info, allow) : Optional.<String>empty();
+    }
+
+    /** Applies the deny-networks, allow-networks, vpn, proxy, hosting, and country rules to a finished lookup. */
     public Decision afterLookup(LoginAttempt attempt, LookupService.Result result) {
         IpInfo info = result.info();
         Optional<Match> match = match(config.rules(), info);
         log.debug("Rules for " + info.ip() + " (vpn " + yesNo(info.vpn()) + ", proxy " + yesNo(info.proxy()) + ", hosting "
                 + yesNo(info.hosting()) + ", country " + Text.dash(info.countryCode()) + ", " + Text.dash(info.asn()) + "): "
                 + (match.isPresent() ? match.get().rule().id() + " matched" : "none matched"));
-        if (!match.isPresent()) return allow("no rule matched", result);
+        if (!match.isPresent()) {
+            // Only an exemption that stopped a vpn, proxy, or hosting kick is worth a rule in the log.
+            Optional<String> allowed = allowedNetwork(config.rules(), info);
+            if (allowed.isPresent() && flagged(config.rules(), info).isPresent()) {
+                return new Decision(Outcome.ALLOW, Rule.ALLOW_NETWORKS, "network is on the allow list (" + allowed.get() + ")",
+                        result, config.dryRun());
+            }
+            return allow("no rule matched", result);
+        }
         Match matched = match.get();
         return matched(attempt, matched.rule(), matched.bypassPermissions(), result, matched.note());
     }

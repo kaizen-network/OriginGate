@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 (unreleased)
+
+### Upgrading from 1.1.x
+
+Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working unchanged and behave as before: every new setting is optional and off when missing. To use the new features, copy the new settings from the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml).
+
+### Added
+
+- `allow-networks` rule: lets in networks you list by AS number or by text in the provider, organisation, or VPN operator name, when the `vpn`, `proxy`, or `hosting` rule would kick them, for example a school or mobile carrier that a provider wrongly flags. `deny-networks` and `country` still apply. Off by default.
+
 ## 1.1.1 (2026-11-07)
 
 ### Fixed

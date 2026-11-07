@@ -4,6 +4,7 @@ package io.github.origingate.core.rules;
 public enum Rule {
     DENY_ADDRESSES("deny-addresses"),
     DENY_NETWORKS("deny-networks"),
+    ALLOW_NETWORKS("allow-networks"),
     VPN("vpn"),
     PROXY("proxy"),
     HOSTING("hosting"),
@@ -19,4 +20,7 @@ public enum Rule {
 
     /** Rules added after 1.0.0, whose config section and kick message may be missing from older files. */
     public boolean addedLater() { return this == DENY_NETWORKS || this == HOSTING; }
+
+    /** False for a rule that only lets players in, so it has no kick message. */
+    public boolean kicks() { return this != ALLOW_NETWORKS; }
 }

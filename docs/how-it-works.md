@@ -20,7 +20,7 @@ On Velocity, the check runs after permission plugins such as LuckPerms have load
 2. `deny-addresses`, when enabled.
 3. Private address skip (`lookup.skip-private-addresses`).
 4. Lookup, waiting at most `lookup.wait-millis`.
-5. `deny-networks`, `vpn`, `proxy`, `hosting`, `country`, when enabled.
+5. `deny-networks`, `allow-networks` (skips `vpn`, `proxy`, and `hosting` for a network on its list), `vpn`, `proxy`, `hosting`, `country`, when enabled.
 
 The first rule that matches decides: kick, or let in through that rule's bypass permission. Later rules are not checked. For example, a player with the VPN bypass who uses a VPN from a country outside the allowlist is let in, because the vpn rule matched first.
 

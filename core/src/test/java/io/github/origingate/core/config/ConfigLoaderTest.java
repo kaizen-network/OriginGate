@@ -109,6 +109,20 @@ class ConfigLoaderTest {
         assertTrue(failure("rules.hosting.typo", true).contains("Unknown setting: rules.hosting.typo"));
     }
 
+    @Test void allowNetworksNeedsNetworkData() throws Exception {
+        assertTrue(failure("rules.allow-networks.enabled", true, "lookup.country-from", List.of("maxmind"),
+                "lookup.vpn-from", List.of(), "rules.vpn.enabled", false, "rules.proxy.enabled", false)
+                .contains("rules.allow-networks"));
+    }
+
+    @Test void oldConfigTurnsNewFeaturesOff() throws Exception {
+        TestSupport.copyResource("/upgrade/config-1.0.0.yml", directory.resolve("config.yml"));
+        TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
+        OriginGateConfig legacy = ConfigLoader.load(directory);
+        assertFalse(legacy.rules().allowNetworks().enabled());
+        Messages.load(directory);
+    }
+
     @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {
         OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", TestSupport.REMOVE,
                 "lookup.vpn-from", TestSupport.REMOVE, "lookup.iphub", TestSupport.REMOVE, "lookup.ip-api", TestSupport.REMOVE,
@@ -265,7 +279,7 @@ class ConfigLoaderTest {
     @Test void messagesLoadAndMustBeComplete() throws Exception {
         TestSupport.writeConfig(directory);
         Messages messages = Messages.load(directory);
-        for (Rule rule : Rule.values()) assertFalse(messages.kick(rule).isBlank());
+        for (Rule rule : Rule.values()) if (rule.kicks()) assertFalse(messages.kick(rule).isBlank());
         assertFalse(messages.kick(Rule.VPN).contains("<ip>"), "default kick screens do not show the IP");
         String text = Files.readString(directory.resolve("messages.yml"));
         Files.writeString(directory.resolve("messages.yml"), text.replace("  country: |-", "  countri: |-"));

@@ -434,15 +434,17 @@ public final class OriginGateConfig {
     public static final class Rules {
         private final AddressRule denyAddresses;
         private final NetworkRule denyNetworks;
+        private final NetworkRule allowNetworks;
         private final BasicRule vpn;
         private final ProxyRule proxy;
         private final BasicRule hosting;
         private final CountryRule country;
 
-        public Rules(AddressRule denyAddresses, NetworkRule denyNetworks, BasicRule vpn, ProxyRule proxy, BasicRule hosting,
-                     CountryRule country) {
+        public Rules(AddressRule denyAddresses, NetworkRule denyNetworks, NetworkRule allowNetworks, BasicRule vpn, ProxyRule proxy,
+                     BasicRule hosting, CountryRule country) {
             this.denyAddresses = denyAddresses;
             this.denyNetworks = denyNetworks;
+            this.allowNetworks = allowNetworks;
             this.vpn = vpn;
             this.proxy = proxy;
             this.hosting = hosting;
@@ -451,6 +453,7 @@ public final class OriginGateConfig {
 
         public AddressRule denyAddresses() { return denyAddresses; }
         public NetworkRule denyNetworks() { return denyNetworks; }
+        public NetworkRule allowNetworks() { return allowNetworks; }
         public BasicRule vpn() { return vpn; }
         public ProxyRule proxy() { return proxy; }
         public BasicRule hosting() { return hosting; }
@@ -468,13 +471,14 @@ public final class OriginGateConfig {
             Rules that = (Rules) other;
             return java.util.Objects.equals(denyAddresses, that.denyAddresses)
                 && java.util.Objects.equals(denyNetworks, that.denyNetworks)
+                && java.util.Objects.equals(allowNetworks, that.allowNetworks)
                 && java.util.Objects.equals(vpn, that.vpn)
                 && java.util.Objects.equals(proxy, that.proxy)
                 && java.util.Objects.equals(hosting, that.hosting)
                 && java.util.Objects.equals(country, that.country);
         }
-        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, denyNetworks, vpn, proxy, hosting, country); }
-        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "denyNetworks=" + denyNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, denyNetworks, allowNetworks, vpn, proxy, hosting, country); }
+        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "denyNetworks=" + denyNetworks + ", " + "allowNetworks=" + allowNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
  }
 
     public static final class AddressRule {
