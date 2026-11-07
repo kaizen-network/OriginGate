@@ -375,8 +375,8 @@ class Probe:
             self.process.wait(timeout=10)
 
 
-def expect_join(backend, name, consent=False):
-    client = Client(name)
+def expect_join(backend, name, consent=False, source=None):
+    client = Client(name, source=source)
     try:
         result, reason = client.login()
         assert result == "joined", f"{name} was kicked: {reason}"
@@ -393,8 +393,8 @@ def expect_join(backend, name, consent=False):
         client.close()
 
 
-def expect_kick(backend, name, *texts):
-    client = Client(name)
+def expect_kick(backend, name, *texts, source=None):
+    client = Client(name, source=source)
     try:
         result, reason = client.login()
         assert result == "kicked", f"{name} was let in"
@@ -678,6 +678,89 @@ def run_110(probe, backend):
     print(status, flush=True)
 
 
+ACCOUNTS_RULE = """  accounts-per-ip:
+    enabled: true
+    max: 1
+"""
+
+
+def drain(backend):
+    """Closes backend connections that joined players left behind."""
+    backend.settimeout(0.5)
+    while True:
+        try:
+            connection, _ = backend.accept()
+            connection.close()
+        except (TimeoutError, OSError):
+            break
+
+
+def run_120(probe, backend):
+    """Checks for the 1.2.0 changes: allow and deny lists, and accounts-per-ip. The webhook needs https, so unit tests cover it."""
+    stub = probe.stub
+    probe.write_config()
+    probe.command("origingate reload", "OriginGate reloaded.")
+
+    probe.fresh("vpn")
+    probe.command("origingate allow add ProbeListed 1h probe", "Added probelisted to the allow list")
+    requests = len(stub.requests)
+    expect_join(backend, "ProbeListed")
+    assert len(stub.requests) == requests, "an allow list entry must skip the lookup"
+    probe.command("origingate allow remove ProbeListed", "Removed probelisted from the allow list")
+    expect_kick(backend, "ProbeListed", "VPN connections are not allowed")
+    probe.ok("allow add lets a stubbed VPN player in without a lookup, and allow remove makes it kicked again")
+
+    probe.fresh("clean")
+    probe.command("origingate deny add 127.0.0.41", "Added 127.0.0.41 to the deny list")
+    requests = len(stub.requests)
+    reason = expect_kick(backend, "ProbeDenied", "not allowed on this server", source="127.0.0.41")
+    assert "Username: ProbeDenied" in reason, reason
+    assert len(stub.requests) == requests, "a deny list entry must kick without a lookup"
+    expect_join(backend, "ProbeNotDenied", source="127.0.0.42")
+    probe.command("origingate deny remove 127.0.0.41", "Removed 127.0.0.41 from the deny list")
+    probe.ok("deny add kicks a clean address at login with no lookup request, and other addresses still join")
+
+    client = Client("ProbeOnline", source="127.0.0.43")
+    try:
+        assert client.login()[0] == "joined"
+        backend.settimeout(10)
+        held = backend.accept()[0]  # Keep it open: a closed backend connection would disconnect the player.
+        probe.command("origingate deny add ProbeOnline", "Added probeonline to the deny list")
+        client.sock.settimeout(10)
+        disconnected = False
+        try:
+            while not disconnected:
+                disconnected = client.receive()[0] == 2  # Disconnect in the configuration state.
+        except (EOFError, OSError):
+            disconnected = True  # The connection closed.
+        assert disconnected, "ProbeOnline was not disconnected"
+    finally:
+        client.close()
+        held.close()
+    probe.command("origingate deny remove ProbeOnline", "Removed probeonline from the deny list")
+    drain(backend)
+    probe.ok("deny add of an online player disconnects them")
+
+    probe.write_config(extra_rules=ACCOUNTS_RULE)
+    probe.command("origingate reload", "OriginGate reloaded.")
+    probe.fresh("clean")
+    first = Client("ProbeFirst", source="127.0.0.51")
+    try:
+        assert first.login()[0] == "joined"
+        backend.settimeout(10)
+        held = backend.accept()[0]
+        reason = expect_kick(backend, "ProbeSecond", "Too many players", source="127.0.0.51")
+        assert "Username: ProbeSecond" in reason, reason
+        expect_join(backend, "ProbeThird", source="127.0.0.52")
+    finally:
+        first.close()
+        held.close()
+    drain(backend)
+    probe.ok("accounts-per-ip with max 1 kicks a second player from the same address and lets one from another address in")
+    probe.write_config()
+    probe.command("origingate reload", "OriginGate reloaded.")
+
+
 def run_without_sqlite(probe, backend):
     """The proxy runs with an os.arch no SQLite native library exists for, like an unsupported system."""
     assert "SQLite cannot run on this system" in probe.log_text(), "no SQLite error at startup"
@@ -756,6 +839,7 @@ def main():
                 run(probe, backend, consentgate)
                 if not consentgate:
                     run_110(probe, backend)
+                    run_120(probe, backend)
         print(f"All {probe.passed} probe checks passed.", flush=True)
     finally:
         probe.stop()

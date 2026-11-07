@@ -130,6 +130,12 @@ Checks:
 20. 3 failed lookups in a row send one alert, and the next answer one recovery alert.
 21. A provider refused with HTTP 429 sends one alert, is not asked while paused, and sends one recovery alert after the 60-second pause.
 22. 12 logins at once from 12 loopback addresses: 8 lookups run and 4, picked up while the queue was backed up, are dropped.
+23. `origingate allow add` lets a stubbed VPN player in with no lookup, and `allow remove` makes it kicked again.
+24. `origingate deny add <address>` kicks a stubbed clean address at login with no lookup request.
+25. `origingate deny add` of an online player disconnects them.
+26. `accounts-per-ip` with `max: 1` kicks a second player from the same address and lets one from another address in.
+
+The Discord webhook is checked by the unit tests only, because the webhook setting needs an https URL and the probe's stub server is plain HTTP.
 
 `--no-sqlite` instead starts the proxy with an `os.arch` no SQLite native library exists for, and checks that logins are still checked with memory-only storage, also after a reload.
 
