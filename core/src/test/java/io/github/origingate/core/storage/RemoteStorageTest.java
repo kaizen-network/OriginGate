@@ -2,6 +2,7 @@ package io.github.origingate.core.storage;
 
 import io.github.origingate.core.TestSupport;
 import io.github.origingate.core.config.OriginGateConfig;
+import io.github.origingate.core.lists.ListEntry;
 import io.github.origingate.core.lookup.IpInfo;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -38,6 +39,7 @@ class RemoteStorageTest {
                 database, env("OG_TEST_DB_USERNAME", "root"), env("OG_TEST_DB_PASSWORD", ""), env("OG_TEST_DB_SSL_MODE", "disable"), 3000, 5000);
         try (Connection connection = open(); Statement statement = connection.createStatement()) {
             statement.execute("DROP TABLE IF EXISTS " + SqlIpStorage.TABLE);
+            statement.execute("DROP TABLE IF EXISTS " + SqlIpStorage.LIST_TABLE);
         }
     }
 
@@ -62,6 +64,21 @@ class RemoteStorageTest {
         assertEquals(info, storage.find("192.0.2.1", Instant.EPOCH).orElseThrow());
         assertEquals(1, storage.deleteOlderThan(TestSupport.NOW.plusSeconds(1)));
         SqlIpStorage.mysql(config); // A second start keeps the existing table.
+    }
+
+    @Test void listTableRoundTrip() throws SQLException {
+        SqlIpStorage storage = SqlIpStorage.mysql(config);
+        Instant soon = TestSupport.NOW.plusSeconds(60);
+        ListEntry allow = new ListEntry(ListEntry.Kind.ALLOW, "kai", soon, "it's Kai", "console", TestSupport.NOW);
+        ListEntry deny = new ListEntry(ListEntry.Kind.DENY, "198.51.100.0/24", null, null, "Sam", TestSupport.NOW.plusSeconds(5));
+        storage.put(allow);
+        storage.put(deny);
+        assertEquals(List.of(allow, deny), storage.all());
+        assertEquals(0, storage.remove(ListEntry.Kind.DENY, "kai"));
+        assertEquals(0, storage.deleteExpired(TestSupport.NOW));
+        assertEquals(1, storage.deleteExpired(soon));
+        assertEquals(1, storage.remove(ListEntry.Kind.DENY, "198.51.100.0/24"));
+        assertEquals(List.of(), storage.all());
     }
 
     @Test void twoProxiesWritingTheSameIpDoNotFail() throws Exception {

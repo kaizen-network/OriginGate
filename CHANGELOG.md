@@ -9,6 +9,7 @@ Replace the JAR and restart. Your `config.yml` and `messages.yml` keep working u
 ### Added
 
 - `allow-networks` rule: lets in networks you list by AS number when the `vpn`, `proxy`, or `hosting` rule would kick them, for example a school or mobile carrier that a provider wrongly flags. `deny-networks` and `country` still apply. Off by default.
+- Storage for allow and deny list entries (table `origingate_list`, created automatically). Entries can expire, carry a note, and are kept in memory, so logins never wait on the database.
 
 ## 1.1.1 (2026-11-07)
 

@@ -22,6 +22,17 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 
 Saves replace the previous row for the same IP in one step, in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
 
+The allow and deny lists use a second table, `origingate_list`, in the same database. It is created together with the first one:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `target` | `VARCHAR(64)` primary key | A lowercase player name, a UUID, an IP address, or a CIDR range. One row per target, so adding it to one list replaces it on the other |
+| `kind` | `VARCHAR(5)` | `allow` or `deny` |
+| `expires_at` | `BIGINT` | Unix seconds, `NULL` when the entry never expires |
+| `note` | `VARCHAR(255)` | `NULL` when there is none |
+| `added_by` | `VARCHAR(64)` | Who added the entry |
+| `added_at` | `BIGINT` | Unix seconds |
+
 ## SQLite
 
 The default. The file is `plugins/origingate/data/origingate.db`. Nothing to set up. SQLite runs on the systems listed under [compatibility](compatibility.md#sqlite); elsewhere, lookups are kept in memory only until you switch to MySQL or MariaDB. The same happens when the file cannot be opened (damaged, locked by another program, or a folder that cannot be written): connections are still checked, an error is logged, and `origingate reload` tries the file again.
