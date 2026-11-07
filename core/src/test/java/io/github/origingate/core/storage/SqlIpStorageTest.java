@@ -1,6 +1,7 @@
 package io.github.origingate.core.storage;
 
 import io.github.origingate.core.TestSupport;
+import io.github.origingate.core.lists.ListEntry;
 import io.github.origingate.core.lookup.IpInfo;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,6 +40,27 @@ class SqlIpStorageTest {
         IpInfo read = read(storage, "192.0.2.1", TestSupport.NOW.minus(Duration.ofDays(1)));
         assertEquals(row("192.0.2.1", TestSupport.NOW), read);
         assertEquals("O'Brien Networks", read.provider());
+    }
+
+    @Test void listTableRoundTrip() throws SQLException {
+        SqlIpStorage storage = SqlIpStorage.sqlite(directory.resolve("lists.db"));
+        Instant soon = TestSupport.NOW.plusSeconds(60);
+        ListEntry allow = new ListEntry(ListEntry.Kind.ALLOW, "kai", soon, "it's Kai", "console", TestSupport.NOW);
+        ListEntry deny = new ListEntry(ListEntry.Kind.DENY, "198.51.100.0/24", null, null, "Sam", TestSupport.NOW.plusSeconds(5));
+        storage.put(allow);
+        storage.put(deny);
+        assertEquals(java.util.List.of(allow, deny), storage.all());
+
+        ListEntry flipped = new ListEntry(ListEntry.Kind.DENY, "kai", null, null, "console", TestSupport.NOW);
+        storage.put(flipped);
+        assertEquals(java.util.List.of(flipped, deny), storage.all());
+
+        assertEquals(0, storage.remove(ListEntry.Kind.ALLOW, "kai"));
+        assertEquals(1, storage.remove(ListEntry.Kind.DENY, "kai"));
+        storage.put(allow);
+        assertEquals(0, storage.deleteExpired(TestSupport.NOW));
+        assertEquals(1, storage.deleteExpired(soon));
+        assertEquals(java.util.List.of(deny), storage.all());
     }
 
     @Test void nullsStayNull() throws SQLException {

@@ -109,6 +109,70 @@ class ConfigLoaderTest {
         assertTrue(failure("rules.hosting.typo", true).contains("Unknown setting: rules.hosting.typo"));
     }
 
+    @Test void allowNetworksNeedsNetworkData() throws Exception {
+        assertTrue(failure("rules.allow-networks.enabled", true, "lookup.country-from", List.of("maxmind"),
+                "lookup.vpn-from", List.of(), "rules.vpn.enabled", false, "rules.proxy.enabled", false)
+                .contains("rules.allow-networks"));
+    }
+
+    @Test void allowNetworksRejectsOrganisations() throws Exception {
+        assertTrue(failure("rules.allow-networks.organisations", List.of("Example School"))
+                .contains("Unknown setting: rules.allow-networks.organisations"));
+    }
+
+    @Test void oldConfigTurnsNewFeaturesOff() throws Exception {
+        TestSupport.copyResource("/upgrade/config-1.0.0.yml", directory.resolve("config.yml"));
+        TestSupport.copyResource("/upgrade/messages-1.0.0.yml", directory.resolve("messages.yml"));
+        OriginGateConfig legacy = ConfigLoader.load(directory);
+        assertFalse(legacy.rules().allowNetworks().enabled());
+        assertFalse(legacy.rules().accountsPerIp().enabled());
+        assertFalse(legacy.discord().enabled());
+        assertEquals("", legacy.discord().webhookUrl());
+        Messages messages = Messages.load(directory);
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
+    }
+
+    @Test void config111TurnsNewFeaturesOff() throws Exception {
+        TestSupport.copyResource("/upgrade/config-1.1.1.yml", directory.resolve("config.yml"));
+        TestSupport.copyResource("/upgrade/messages-1.1.1.yml", directory.resolve("messages.yml"));
+        OriginGateConfig legacy = ConfigLoader.load(directory);
+        assertFalse(legacy.rules().allowNetworks().enabled());
+        assertFalse(legacy.rules().accountsPerIp().enabled());
+        assertFalse(legacy.discord().enabled());
+        Messages messages = Messages.load(directory);
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.DENY_LIST).startsWith("<red>You are not allowed on this server.</red>"));
+        assertTrue(messages.kick(io.github.origingate.core.rules.Rule.ACCOUNTS_PER_IP).startsWith("<red>Too many players are already connected"));
+    }
+
+    @Test void discordUrlMustBeHttps() throws Exception {
+        OriginGateConfig off = TestSupport.config(directory);
+        assertFalse(off.discord().enabled());
+        assertFalse(off.discord().showIp());
+        String url = "https://discord.com/api/webhooks/123/secret-token";
+        OriginGateConfig on = TestSupport.config(directory, "discord.webhook-url", url, "discord.show-ip", true);
+        assertTrue(on.discord().enabled());
+        assertEquals(url, on.discord().webhookUrl());
+        assertTrue(on.discord().showIp());
+        assertFalse(on.discord().toString().contains("secret-token"));
+        assertFalse(on.toString().contains("secret-token"));
+        String message = failure("discord.webhook-url", "http://discord.com/api/webhooks/123/secret-token");
+        assertTrue(message.contains("discord.webhook-url") && message.contains("https"), message);
+        assertFalse(message.contains("secret-token"));
+        assertTrue(failure("discord.webhook-url", "not a url").contains("discord.webhook-url"));
+        assertTrue(failure("discord.extra", true).contains("Unknown setting"));
+    }
+
+    @Test void accountsPerIpChecksItsLimit() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory);
+        assertFalse(config.rules().accountsPerIp().enabled());
+        assertEquals(3, config.rules().accountsPerIp().max());
+        assertEquals(1, TestSupport.config(directory, "rules.accounts-per-ip.max", 1).rules().accountsPerIp().max());
+        assertEquals(100, TestSupport.config(directory, "rules.accounts-per-ip.max", 100).rules().accountsPerIp().max());
+        assertEquals("rules.accounts-per-ip.max must be a whole number from 1 to 100", failure("rules.accounts-per-ip.max", 0));
+        assertEquals("rules.accounts-per-ip.max must be a whole number from 1 to 100", failure("rules.accounts-per-ip.max", 101));
+    }
+
     @Test void olderConfigWithoutProviderSettingsUsesProxycheck() throws Exception {
         OriginGateConfig config = TestSupport.config(directory, "lookup.country-from", TestSupport.REMOVE,
                 "lookup.vpn-from", TestSupport.REMOVE, "lookup.iphub", TestSupport.REMOVE, "lookup.ip-api", TestSupport.REMOVE,
@@ -265,7 +329,7 @@ class ConfigLoaderTest {
     @Test void messagesLoadAndMustBeComplete() throws Exception {
         TestSupport.writeConfig(directory);
         Messages messages = Messages.load(directory);
-        for (Rule rule : Rule.values()) assertFalse(messages.kick(rule).isBlank());
+        for (Rule rule : Rule.values()) if (rule.kicks()) assertFalse(messages.kick(rule).isBlank());
         assertFalse(messages.kick(Rule.VPN).contains("<ip>"), "default kick screens do not show the IP");
         String text = Files.readString(directory.resolve("messages.yml"));
         Files.writeString(directory.resolve("messages.yml"), text.replace("  country: |-", "  countri: |-"));

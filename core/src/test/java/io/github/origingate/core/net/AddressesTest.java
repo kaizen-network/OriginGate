@@ -25,6 +25,23 @@ class AddressesTest {
         assertTrue(Addresses.parse(null).isEmpty());
     }
 
+    @Test void parsingNeverAsksTheResolver() {
+        // The counter must see a real lookup, or the zero below would prove nothing.
+        CountingResolverProvider.reset();
+        assertThrows(java.net.UnknownHostException.class, () -> InetAddress.getByName("counter-check.invalid"));
+        assertEquals(1, CountingResolverProvider.lookups(), "the counting resolver is installed");
+
+        CountingResolverProvider.reset();
+        assertTrue(Addresses.parse(".:").isEmpty());
+        assertTrue(Addresses.parse("...:").isEmpty());
+        assertTrue(Addresses.parse(".1:2").isEmpty());
+        assertTrue(Addresses.parse("localhost").isEmpty());
+        assertTrue(Addresses.parse("192.0.2.1").isPresent());
+        assertTrue(Addresses.parse("2001:db8::1").isPresent());
+        assertTrue(Addresses.parse("::ffff:192.0.2.1").isPresent());
+        assertEquals(0, CountingResolverProvider.lookups(), "no text is ever sent to the resolver");
+    }
+
     @Test void textIsCanonical() {
         assertEquals("2001:db8:0:0:0:0:0:1", Addresses.text(ip("2001:db8::1")));
         assertEquals("192.0.2.1", Addresses.text(ip("192.0.2.1")));

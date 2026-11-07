@@ -2,6 +2,7 @@ package io.github.origingate.core;
 
 import io.github.origingate.core.config.OriginGateConfig;
 import io.github.origingate.core.report.DecisionLine;
+import io.github.origingate.core.report.DiscordWebhook;
 import io.github.origingate.core.rules.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -25,6 +26,7 @@ public final class RuntimeController implements AutoCloseable {
     private final Supplier<OfflineModeWarning.Mode> mode;
     private final LookupStats stats = new LookupStats();
     private final Alerts alerts;
+    private final OnlineCount online;
     private final AtomicInteger droppedReports = new AtomicInteger();
     private final ThreadPoolExecutor reports = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(256), task -> {
@@ -42,6 +44,12 @@ public final class RuntimeController implements AutoCloseable {
 
     /** {@code mode} tells how the platform checks player names, for the offline-mode warning. */
     public RuntimeController(Path directory, Log log, Supplier<OfflineModeWarning.Mode> mode, StaffAlerts staff) {
+        this(directory, log, mode, staff, OnlineCount.NONE);
+    }
+
+    /** {@code online} counts the players connected from one address, for accounts-per-ip. */
+    public RuntimeController(Path directory, Log log, Supplier<OfflineModeWarning.Mode> mode, StaffAlerts staff, OnlineCount online) {
+        this.online = online;
         this.directory = directory;
         this.log = log;
         this.mode = mode;
@@ -50,12 +58,20 @@ public final class RuntimeController implements AutoCloseable {
             @Override protected void sendProblem(String message) {
                 log.warn("Alert: " + message, null);
                 OriginGateRuntime active = runtime;
-                if (active != null) staff.send(active, active.messages().alertLookupProblem(), message);
+                if (active != null) {
+                    staff.send(active, active.messages().alertLookupProblem(), message);
+                    DiscordWebhook webhook = active.webhook();
+                    if (webhook != null) webhook.alert(false, message);
+                }
             }
             @Override protected void sendRecovered(String message) {
                 log.info("Alert: " + message);
                 OriginGateRuntime active = runtime;
-                if (active != null) staff.send(active, active.messages().alertLookupRecovered(), message);
+                if (active != null) {
+                    staff.send(active, active.messages().alertLookupRecovered(), message);
+                    DiscordWebhook webhook = active.webhook();
+                    if (webhook != null) webhook.alert(true, message);
+                }
             }
         };
         reports.allowCoreThreadTimeOut(true);
@@ -66,7 +82,9 @@ public final class RuntimeController implements AutoCloseable {
         try {
             OriginGateRuntime.installDefaults(directory);
             OfflineModeWarning.Mode current = currentMode();
-            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified());
+            OriginGateRuntime before = runtime;
+            OriginGateRuntime next = OriginGateRuntime.load(directory, log, stats, alerts, current.namesUnverified(), online,
+                    before == null ? null : before.lists());
             if (closed) {
                 next.close();
                 return "OriginGate is stopping.";
@@ -112,8 +130,9 @@ public final class RuntimeController implements AutoCloseable {
         if (active == null) return;
         try {
             OriginGateRuntime.Cleanup cleanup = active.deleteExpired();
-            if (cleanup.rows() > 0 || cleanup.files() > 0) {
-                log.info("Deleted " + cleanup.rows() + " expired lookups and " + cleanup.files() + " old log files");
+            if (cleanup.rows() > 0 || cleanup.files() > 0 || cleanup.listEntries() > 0) {
+                log.info("Deleted " + cleanup.rows() + " expired lookups, " + cleanup.files() + " old log files, and "
+                        + cleanup.listEntries() + " expired list entries");
             }
         } catch (Exception ex) {
             log.warn("Could not delete expired OriginGate data: " + Text.message(ex), null);
@@ -122,6 +141,9 @@ public final class RuntimeController implements AutoCloseable {
     /** Decision logging never blocks platform events or the shared lookup deadline thread. */
     public void report(OriginGateRuntime active, LoginAttempt attempt, Decision decision) {
         if (closed) return;
+        // Before the early return below: the webhook posts kicks and bypasses whatever the console and log file show.
+        DiscordWebhook webhook = active.webhook();
+        if (webhook != null) webhook.decision(attempt, decision);
         if (!active.config().consoleLog().shows(decision) && (active.decisionFile() == null || decision.rule() == null)) return;
         try {
             reports.execute(() -> {

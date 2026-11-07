@@ -2,6 +2,7 @@ package io.github.origingate.velocity;
 
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.command.SimpleCommand;
+import com.velocitypowered.api.proxy.Player;
 import io.github.origingate.core.Commands;
 import net.kyori.adventure.text.Component;
 
@@ -30,6 +31,7 @@ final class OriginGateCommand implements SimpleCommand {
         return new Commands.Sender() {
             @Override public boolean hasPermission(String permission) { return source.hasPermission(permission); }
             @Override public void reply(String line) { source.sendMessage(Component.text(line)); }
+            @Override public String name() { return source instanceof Player player ? player.getUsername() : "console"; }
         };
     }
 }

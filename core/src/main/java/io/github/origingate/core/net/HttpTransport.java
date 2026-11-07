@@ -43,12 +43,16 @@ public final class HttpTransport implements AutoCloseable {
         connection.setInstanceFollowRedirects(false);
         connection.setRequestMethod(request.method);
         request.headers.forEach(connection::setRequestProperty);
+        if (request.body != null) {
+            connection.setDoOutput(true);
+            connection.setFixedLengthStreamingMode(request.body.length);
+        }
         active.add(connection);
         // Whoever sets this first owns the outcome: the exchange hands over its response, or the caller gives up.
         final AtomicBoolean settled = new AtomicBoolean();
         final Future<HttpResponse<T>> exchange;
         try {
-            exchange = exchanges.submit(() -> exchange(connection, handler, settled));
+            exchange = exchanges.submit(() -> exchange(connection, request.body, handler, settled));
         } catch (RejectedExecutionException ex) {
             disconnect(connection); throw new IOException("HTTP transport is closed", ex);
         }
@@ -70,16 +74,19 @@ public final class HttpTransport implements AutoCloseable {
             throw new IOException(cause);
         }
     }
-    private <T> HttpResponse<T> exchange(HttpURLConnection connection, HttpResponse.BodyHandler<T> handler, AtomicBoolean settled)
+    private <T> HttpResponse<T> exchange(HttpURLConnection connection, byte[] body, HttpResponse.BodyHandler<T> handler, AtomicBoolean settled)
             throws IOException {
         boolean handed = false;
         try {
             connection.connect();
             if (settled.get()) throw new HttpTimeoutException("HTTP request timed out");
+            if (body != null) {
+                try (OutputStream output = connection.getOutputStream()) { output.write(body); }
+            }
             int status = connection.getResponseCode();
             InputStream raw = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            T body = handler.read(new Body(raw == null ? new ByteArrayInputStream(new byte[0]) : raw, connection));
-            HttpResponse<T> response = new HttpResponse<>(status, body, connection.getHeaderFields());
+            T result = handler.read(new Body(raw == null ? new ByteArrayInputStream(new byte[0]) : raw, connection));
+            HttpResponse<T> response = new HttpResponse<>(status, result, connection.getHeaderFields());
             if (!settled.compareAndSet(false, true)) {
                 close(response);
                 throw new HttpTimeoutException("HTTP request timed out");

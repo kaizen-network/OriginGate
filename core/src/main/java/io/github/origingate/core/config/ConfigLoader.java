@@ -61,7 +61,7 @@ public final class ConfigLoader {
         Path root = dataDirectory.toAbsolutePath().normalize();
         YamlSection config = YamlSection.load(root.resolve("config.yml"));
         config.allowOnly("config-version", "dry-run", "console-log", "lookup", "storage", "bypass", "rules", "alerts", "log-file",
-                "log-file-keep-days");
+                "log-file-keep-days", "discord");
         config.integer("config-version", 1, 1);
         Lookup lookup = lookup(root, config.section("lookup"));
         Rules rules = rules(config.section("rules"));
@@ -73,13 +73,40 @@ public final class ConfigLoader {
             throw new ConfigException("rules.hosting needs proxycheck or ip-api in lookup.vpn-from; the other providers "
                     + "do not report hosting networks separately");
         }
-        if (rules.denyNetworks().enabled() && lookup.inUse().equals(io.github.origingate.core.util.Compat.list("maxmind"))) {
+        boolean maxmindOnly = lookup.inUse().equals(io.github.origingate.core.util.Compat.list("maxmind"));
+        if (rules.denyNetworks().enabled() && maxmindOnly) {
             throw new ConfigException("rules.deny-networks needs a provider other than maxmind; MaxMind country files have "
+                    + "no ASN or organisation");
+        }
+        if (rules.allowNetworks().enabled() && maxmindOnly) {
+            throw new ConfigException("rules.allow-networks needs a provider other than maxmind; MaxMind country files have "
                     + "no ASN or organisation");
         }
         return new OriginGateConfig(config.bool("dry-run"), config.choice("console-log", OriginGateConfig.ConsoleLog.class),
                 lookup, storage(root, config.section("storage")), bypass(config.section("bypass")), rules,
-                alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650));
+                alerts(config.section("alerts")), config.bool("log-file"), config.integer("log-file-keep-days", 0, 3650),
+                discord(config));
+    }
+
+    /** Added in 1.2.0; a config from before has no such section, which means the webhook is off. */
+    private static OriginGateConfig.Discord discord(YamlSection config) throws ConfigException {
+        if (!config.has("discord")) return new OriginGateConfig.Discord("", false);
+        YamlSection section = config.section("discord");
+        section.allowOnly("webhook-url", "show-ip");
+        String url = section.text("webhook-url", 0, 512).trim();
+        boolean showIp = section.bool("show-ip");
+        if (url.isEmpty()) return new OriginGateConfig.Discord("", showIp);
+        // The URL is a secret, so no message here repeats it.
+        java.net.URI uri;
+        try {
+            uri = new java.net.URI(url);
+        } catch (java.net.URISyntaxException ex) {
+            throw new ConfigException(section.key("webhook-url") + " is not a valid URL");
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+            throw new ConfigException(section.key("webhook-url") + " must be an https URL, or empty to turn the webhook off");
+        }
+        return new OriginGateConfig.Discord(url, showIp);
     }
 
     private static Lookup lookup(Path root, YamlSection lookup) throws ConfigException {
@@ -237,7 +264,7 @@ public final class ConfigLoader {
     }
 
     private static Rules rules(YamlSection rules) throws ConfigException {
-        rules.allowOnly("deny-addresses", "deny-networks", "vpn", "proxy", "hosting", "country");
+        rules.allowOnly("deny-addresses", "accounts-per-ip", "deny-networks", "allow-networks", "vpn", "proxy", "hosting", "country");
         YamlSection deny = rules.section("deny-addresses");
         deny.allowOnly("enabled", "list", "bypass-permissions");
         YamlSection vpn = rules.section("vpn");
@@ -248,12 +275,22 @@ public final class ConfigLoader {
         country.allowOnly("enabled", "mode", "countries", "bypass-permissions");
         return new Rules(
                 new AddressRule(deny.bool("enabled"), ranges(deny, "list"), permissions(deny, "bypass-permissions")),
-                denyNetworks(rules),
+                accountsPerIp(rules),
+                networks(rules, "deny-networks", true),
+                networks(rules, "allow-networks", false),
                 new BasicRule(vpn.bool("enabled"), permissions(vpn, "bypass-permissions")),
                 new ProxyRule(proxy.bool("enabled"), countries(proxy, "allowed-countries"), permissions(proxy, "bypass-permissions")),
                 hosting(rules),
                 new CountryRule(country.bool("enabled"), country.choice("mode", CountryMode.class),
                         countries(country, "countries"), permissions(country, "bypass-permissions")));
+    }
+
+    /** Added in 1.2.0; a config from before has no such section, which means the rule is off. */
+    private static OriginGateConfig.AccountsRule accountsPerIp(YamlSection rules) throws ConfigException {
+        if (!rules.has("accounts-per-ip")) return new OriginGateConfig.AccountsRule(false, 3);
+        YamlSection section = rules.section("accounts-per-ip");
+        section.allowOnly("enabled", "max");
+        return new OriginGateConfig.AccountsRule(section.bool("enabled"), section.integer("max", 1, 100));
     }
 
     /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */
@@ -264,12 +301,13 @@ public final class ConfigLoader {
         return new BasicRule(hosting.bool("enabled"), permissions(hosting, "bypass-permissions"));
     }
 
-    /** Added in 1.1.0; a config from before has no such section, which means the rule is off. */
-    private static NetworkRule denyNetworks(YamlSection rules) throws ConfigException {
+    /** deny-networks (1.1.0) and allow-networks (1.2.0); a config from before has no such section, which means the rule is off. */
+    private static NetworkRule networks(YamlSection rules, String name, boolean hasBypassPermissions) throws ConfigException {
         List<String> none = io.github.origingate.core.util.Compat.list();
-        if (!rules.has("deny-networks")) return new NetworkRule(false, none, none, none);
-        YamlSection section = rules.section("deny-networks");
-        section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
+        if (!rules.has(name)) return new NetworkRule(false, none, none, none);
+        YamlSection section = rules.section(name);
+        if (hasBypassPermissions) section.allowOnly("enabled", "asns", "organisations", "bypass-permissions");
+        else section.allowOnly("enabled", "asns");
         List<String> asns = new ArrayList<>();
         for (String value : section.list("asns", MAX_LIST)) {
             String asn = value.toUpperCase(Locale.ROOT);
@@ -280,14 +318,16 @@ public final class ConfigLoader {
             asns.add(asn);
         }
         List<String> organisations = new ArrayList<>();
-        for (String value : section.list("organisations", MAX_LIST)) {
+        // allow-networks matches AS numbers only: a name match in an allow rule would let in any VPN with that text in its name.
+        if (hasBypassPermissions) for (String value : section.list("organisations", MAX_LIST)) {
             if (value.length() < 3) {
                 throw new ConfigException(section.key("organisations") + " entries need at least 3 characters: " + value);
             }
             organisations.add(value.toLowerCase(Locale.ROOT));
         }
         return new NetworkRule(section.bool("enabled"), io.github.origingate.core.util.Compat.listCopy(asns),
-                io.github.origingate.core.util.Compat.listCopy(organisations), permissions(section, "bypass-permissions"));
+                io.github.origingate.core.util.Compat.listCopy(organisations),
+                hasBypassPermissions ? permissions(section, "bypass-permissions") : none);
     }
 
     private static List<String> alerts(YamlSection alerts) throws ConfigException {

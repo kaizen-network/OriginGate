@@ -112,6 +112,13 @@ rules:
     # IP addresses or CIDR ranges, for example ["203.0.113.0/24"].
     list: []
     bypass-permissions: []
+  # Kicks a player when this many players are already online from the same IP address, for example bot accounts from
+  # one machine. Mobile carriers, schools, and families often share one address, so keep it off or set it generously.
+  # Put players who share an address on the allow list. Counts players on this server or proxy only.
+  accounts-per-ip:
+    enabled: false
+    # Most players online at once from one address (1-100).
+    max: 3
   # Kicks networks you list by AS number or name, for example a hosting company that VPN services rent from.
   # Works with every provider except maxmind, which has no network data.
   deny-networks:
@@ -122,6 +129,13 @@ rules:
     # For example ["Example Hosting"]. At least 3 characters each.
     organisations: []
     bypass-permissions: ["origingate.bypass.deny-networks"]
+  # Lets in networks you list by AS number when the vpn, proxy, or hosting rule would kick them, for example a school
+  # or mobile carrier that a provider wrongly flags. deny-networks and country still apply. "origingate check <ip>"
+  # shows an address's AS number. Works with every provider except maxmind, which has no network data.
+  allow-networks:
+    enabled: false
+    # AS numbers, for example [AS64496].
+    asns: []
   # Kicks IPs that the vpn-from provider flags as a VPN.
   vpn:
     enabled: true
@@ -151,6 +165,14 @@ alerts:
   # Online staff with any of these permissions see kicks and bypasses in chat, and one message when a lookup
   # provider stops answering or the lookup budget is used up, and one when that is over.
   permissions: ["origingate.alerts"]
+
+# Posts kicks, bypasses, and lookup alerts (what staff with an alert permission see in chat) to a Discord channel.
+# Posts within 5 seconds are combined into one, so a flood of kicks becomes a short summary.
+discord:
+  # The channel's webhook URL, from the channel's settings under Integrations, Webhooks. Leave empty to turn off.
+  webhook-url: ""
+  # Show players' IP addresses in posts. Off by default, so addresses stay on this server.
+  show-ip: false
 
 # Write every login where a rule matched or the lookup failed to daily files in the logs folder.
 log-file: true

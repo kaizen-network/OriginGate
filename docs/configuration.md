@@ -8,7 +8,7 @@ order: 4
 
 `config.yml` is in `plugins/origingate/`. Run `origingate reload` after editing. A file with a mistake is refused, the old settings stay active, and the reply names the setting, for example `lookup.wait-millis must be a whole number from 1000 to 20000`. Unknown settings are refused too, so typos are caught.
 
-Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) are optional: a config without them works as it did in 1.0.0.
+Updates keep your file. New settings are not added automatically; compare with the [default config](https://github.com/kaizen-network/OriginGate/blob/main/core/src/main/resources/config.yml) after an update. Settings added in 1.1.0 (`max-lookups-per-minute`, `on-budget-exceeded`, `rules.deny-networks`, and `rules.hosting`) and 1.2.0 (`rules.allow-networks`, `rules.accounts-per-ip`, and `discord`) are optional: a config without them works as it did in 1.0.0. To use one of the new sections, copy the whole section from the default config: a section with a missing inner key is refused.
 
 ## Settings
 
@@ -42,18 +42,41 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `bypass.players` | `[]` | Names (any case) or UUIDs. Anyone can claim them in offline mode; see [offline mode and proxies](#offline-mode-and-proxies) |
 | `bypass.addresses` | `[]` | IPs or CIDR ranges |
 | `rules.deny-addresses` | off | `list` of IPs or CIDR ranges, `bypass-permissions` |
+| `rules.accounts-per-ip` | off | `max` (1 to 100, default 3): the most players online at once from one address. Exact address only, not an IPv6 /64. No bypass permissions; use the allow list. Counts players on this server or proxy only, so on a network install it on the proxy. Shared addresses are common, so set it generously. On Bukkit it counts only on the main thread |
 | `rules.deny-networks` | off | `asns` (AS numbers such as `AS64496`), `organisations` (text to look for in the network's provider, organisation, or VPN operator name, ignoring case, at least 3 characters), `bypass-permissions: [origingate.bypass.deny-networks]`. Works with every provider except `maxmind` |
+| `rules.allow-networks` | off | `asns` only (AS numbers, no name matching, no bypass permissions). Lets in a listed network when `vpn`, `proxy`, or `hosting` would kick it; `deny-networks` and `country` still apply. Works with every provider except `maxmind` |
 | `rules.vpn` | on | `bypass-permissions: [origingate.bypass.vpn]` |
 | `rules.proxy` | on | `allowed-countries` (codes), `bypass-permissions: [origingate.bypass.proxy]` |
 | `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
 | `rules.country` | off | `mode: allowlist` or `denylist`, `countries` (codes), `bypass-permissions: [origingate.bypass.country]` |
 | `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts, and lookup problems (one message when it starts, one when it is over) |
+| `discord.webhook-url` | empty (off) | A Discord channel's webhook URL (https only). Posts kicks, bypasses, and lookup problems and recoveries, the same events staff with an alert permission see in chat. Dry-run kicks are not posted. The URL is a secret: it is never logged or shown. See [Discord webhook](#discord-webhook) |
+| `discord.show-ip` | `false` | Add each player's IP address to Discord posts |
 | `log-file` | `true` | Daily log files of kicks, bypasses, and lookup failures |
 | `log-file-keep-days` | `30` | 0 to 3650. Log files older than this are deleted. `0` keeps them forever |
 
 Country codes are ISO 3166-1 two-letter codes such as `US`, `GB`, `ID`, in any case, plus `XK` for Kosovo. Unknown codes are refused.
 
 Changing `storage.type` takes effect on reload. Saved lookups are not copied between storage types.
+
+## Discord webhook
+
+Set `discord.webhook-url` to post to a Discord channel. Create the URL in the channel's settings under Integrations, then Webhooks. Reload with `origingate reload`. `origingate status` shows `Discord webhook: on` or `off`.
+
+Posts are combined: every 5 seconds, the lines queued since the last post go out as one message. A message shows up to 10 lines, then `And <n> more.` for the rest. That is at most 12 posts a minute, within Discord's limits.
+
+The lines are plain English and do not come from `messages.yml`:
+
+```
+Kicked **Kai** by the vpn rule: flagged as VPN (Example VPN / Example Org, Netherlands)
+Let in **Kai** with a vpn bypass: flagged as VPN (Example VPN / Example Org, Netherlands)
+Alert: provider proxycheck is paused
+Recovered: provider proxycheck is back
+```
+
+Player, provider, organisation, country, and note text is escaped so it cannot format the message, and posts never ping anyone. Lines longer than 190 characters are cut.
+
+A failed post never affects logins. The first failure logs one warning, without the URL, and the next success logs one line. Lines from a failed post are dropped, not sent again.
 
 ## Examples
 
@@ -100,6 +123,17 @@ rules:
     enabled: true
     bypass-permissions: ["origingate.bypass.hosting"]
 ```
+
+To let in a network that a provider wrongly flags, such as a school or a mobile carrier, list it under `allow-networks`. It only skips the `vpn`, `proxy`, and `hosting` rules, and the log shows `rule=allow-networks` when it did.
+
+```yaml
+rules:
+  allow-networks:
+    enabled: true
+    asns: [AS64500]
+```
+
+Use `origingate check <ip>` to see an address's AS number. Names are not matched, because a name match could let in any VPN with that text in its name.
 
 Hosting and datacenter networks are where VPN services and bots rent their servers, so the hosting rule catches many that no provider flags as a VPN. It also catches players who play through a cloud desktop or a hosted VPN of their own; give them `origingate.bypass.hosting`. Try it with `dry-run: true` first.
 
