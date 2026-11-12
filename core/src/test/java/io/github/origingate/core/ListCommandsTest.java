@@ -204,6 +204,10 @@ class ListCommandsTest {
         assertEquals("Durations go from 1s to 3650d, or never.", sender.next());
         run(sender, "allow", "add", "Kai", "99999999999999999999d");
         assertEquals("Durations go from 1s to 3650d, or never.", sender.next());
+        run(sender, "allow", "add", "Kai", "30min", "griefing");
+        assertEquals("30min is not a duration. Use s, m, h, d, or w, like 30m or 7d. For a note that starts with a number, put never first.", sender.next());
+        run(sender, "allow", "add", "Kai", "1y");
+        assertEquals("1y is not a duration. Use s, m, h, d, or w, like 30m or 7d. For a note that starts with a number, put never first.", sender.next());
         run(sender, "allow", "add", "Kai", "never", "x".repeat(256));
         assertEquals("Notes can be up to 255 characters.", sender.next());
         run(sender, "allow", "add");

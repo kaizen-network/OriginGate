@@ -26,7 +26,7 @@ Use them in game with `/`, or in the console without it.
 
 ### Allow and deny lists
 
-A duration is a number and a unit: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), or `w` (weeks), from `1s` to `3650d`. Use `never` or leave it out for an entry that does not expire. If the word after the target is not a duration, it starts the note. A note can be up to 255 characters. A note whose first word looks like a duration (for example `5m`) is read as the duration.
+A duration is a number and a unit: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), or `w` (weeks), from `1s` to `3650d`. Use `never` or leave it out for an entry that does not expire. If the word after the target is not a duration, it starts the note, unless it starts with a digit (for example `30min` or `1y`): then the command is refused, so a typo does not save an entry that never expires. To start a note with a number, put `never` first. A note can be up to 255 characters. A note whose first word looks like a duration (for example `5m`) is read as the duration.
 
 Examples: `origingate allow add Kai 7d trusted tester`, `origingate deny add 203.0.113.0/24 never spam network`.
 

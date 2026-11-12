@@ -188,6 +188,10 @@ public final class Commands {
                 }
                 expires = now.plusSeconds(seconds);
                 noteFrom = 4;
+            } else if (!word.isEmpty() && Character.isDigit(word.charAt(0))) {
+                // A mistyped duration (30min, 1y) would otherwise start the note and the entry would never expire.
+                sender.reply(args[3] + " is not a duration. Use s, m, h, d, or w, like 30m or 7d. For a note that starts with a number, put never first.");
+                return;
             }
         }
         String note = String.join(" ", Arrays.copyOfRange(args, noteFrom, args.length));
