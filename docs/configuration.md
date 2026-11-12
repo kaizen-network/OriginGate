@@ -50,7 +50,7 @@ Updates keep your file. New settings are not added automatically; compare with t
 | `rules.hosting` | off | `bypass-permissions: [origingate.bypass.hosting]`. Needs `proxycheck` or `ip-api` in `vpn-from`. See [providers](providers.md#hosting-networks) |
 | `rules.country` | off | `mode: allowlist` or `denylist`, `countries` (codes), `bypass-permissions: [origingate.bypass.country]` |
 | `alerts.permissions` | `[origingate.alerts]` | Staff who see kick and bypass alerts, and lookup problems (one message when it starts, one when it is over) |
-| `discord.webhook-url` | empty (off) | A Discord channel's webhook URL (https only). Posts kicks, bypasses, and lookup problems and recoveries, the same events staff with an alert permission see in chat. Dry-run kicks are not posted. The URL is a secret: it is never logged or shown. See [Discord webhook](#discord-webhook) |
+| `discord.webhook-url` | empty (off) | A Discord channel's webhook URL (https only). Posts kicks, bypasses, and lookup problems and recoveries, the same events staff with an alert permission see in chat. With `dry-run: true`, kicks and bypasses are not posted. The URL is a secret: it is never logged or shown. See [Discord webhook](#discord-webhook) |
 | `discord.show-ip` | `false` | Add each player's IP address to Discord posts |
 | `log-file` | `true` | Daily log files of kicks, bypasses, and lookup failures |
 | `log-file-keep-days` | `30` | 0 to 3650. Log files older than this are deleted. `0` keeps them forever |
