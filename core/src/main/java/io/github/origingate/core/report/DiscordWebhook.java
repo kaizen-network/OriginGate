@@ -84,17 +84,17 @@ public final class DiscordWebhook implements AutoCloseable {
             if (decision.note() != null) line.append(": ").append(text(decision.note()));
             if (decision.lookup() != null) {
                 IpInfo info = decision.lookup().info();
-                line.append(" (").append(escape(Text.dash(info.provider()))).append(" / ")
-                        .append(escape(Text.dash(info.displayOrganisation()))).append(", ")
-                        .append(escape(Text.dash(info.country()))).append(')');
+                line.append(" (").append(text(Text.dash(info.provider()))).append(" / ")
+                        .append(text(Text.dash(info.displayOrganisation()))).append(", ")
+                        .append(text(Text.dash(info.country()))).append(')');
             }
-            if (showIp) line.append(" IP ").append(Addresses.text(attempt.address()));
-            if (decision.caution() != null) {
-                // End the sentence before it, so the caution does not read as part of the note.
-                if (line.charAt(line.length() - 1) != '.') line.append('.');
-                line.append(" Caution: ").append(text(decision.caution())).append('.');
-            }
-            enqueue(line.toString());
+            // The address and the caution go last, so a long line is cut before them.
+            String ip = showIp ? " IP " + Addresses.text(attempt.address()) : "";
+            String caution = decision.caution() == null ? "" : " Caution: " + text(decision.caution()) + ".";
+            String head = cut(line.toString(), MAX_LINE - ip.length() - caution.length() - 1) + ip;
+            // End the sentence before the caution, so it does not read as part of the note.
+            if (!caution.isEmpty() && !head.endsWith(".")) head += ".";
+            enqueue(head + caution);
         } catch (RuntimeException ex) {
             // A webhook problem must never reach a login.
         }
@@ -143,12 +143,16 @@ public final class DiscordWebhook implements AutoCloseable {
     }
 
     private void enqueue(String line) {
-        String cut = line.length() <= MAX_LINE ? line : line.substring(0, safeCut(line, MAX_LINE - 3)) + "...";
+        String cut = cut(line, MAX_LINE);
         synchronized (lock) {
             if (closed) return;
             if (queue.size() >= MAX_QUEUED) overflow++;
             else queue.add(cut);
         }
+    }
+
+    private static String cut(String line, int max) {
+        return line.length() <= max ? line : line.substring(0, safeCut(line, Math.max(0, max - 3))) + "...";
     }
 
     private static int safeCut(String text, int index) {

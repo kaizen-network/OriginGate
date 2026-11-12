@@ -155,6 +155,24 @@ class DiscordWebhookTest {
         assertTrue(text.contains("connect failed for \\[IP hidden\\]:443 today"), text);
     }
 
+    @Test void addressesInLookupAnswersAreHidden() {
+        DiscordWebhook hook = webhook(false);
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"),
+                decision(Decision.Outcome.DENY, Rule.VPN, "flagged as VPN", answer("static.203.0.113.7.example.net"), false));
+        hook.flush();
+        assertFalse(content(0).contains("203.0.113.7"), content(0));
+    }
+
+    @Test void longLinesKeepTheAddressAndCaution() {
+        DiscordWebhook hook = webhook(true);
+        hook.decision(TestSupport.player("Kai", "203.0.113.7"),
+                new Decision(Decision.Outcome.BYPASS, Rule.VPN, "n".repeat(300), null, false, "anyone can use this name"));
+        hook.flush();
+        String content = content(0);
+        assertTrue(content.length() <= 190, "length " + content.length());
+        assertTrue(content.endsWith("n... IP 203.0.113.7. Caution: anyone can use this name."), content);
+    }
+
     @Test void bodySuppressesEmbeds() {
         DiscordWebhook hook = webhook(false);
         hook.alert(false, "see https://example.com/x");
