@@ -245,6 +245,16 @@ class AccessListsTest {
         assertEquals(2, after.targets(ListEntry.Kind.DENY).size() + after.targets(ListEntry.Kind.ALLOW).size());
     }
 
+    @Test void memoryListsAfterDatabaseListsKeepTheEntries() throws Exception {
+        TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
+        AccessLists before = load(SqlIpStorage.sqlite(directory.resolve("lists.db")), clock);
+        before.add(entry(ListEntry.Kind.DENY, "kai")).get();
+        AccessLists after = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, new TestSupport.RecordingLog(), before);
+        assertTrue(after.match("Kai", KAI, HOME).isPresent());
+        after.add(entry(ListEntry.Kind.ALLOW, "sam")).get();
+        assertTrue(after.match("Kai", KAI, HOME).isPresent());
+    }
+
     @Test void unreadableTableKeepsThePreviousCopy() throws Exception {
         TestSupport.MutableClock clock = new TestSupport.MutableClock(TestSupport.NOW);
         BrokenTable good = new BrokenTable();

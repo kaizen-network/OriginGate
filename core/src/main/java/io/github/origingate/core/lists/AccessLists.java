@@ -62,7 +62,7 @@ public final class AccessLists {
     }
 
     /**
-     * Memory-only lists after memory-only lists keep the old entries. When the table cannot be read (or {@code read} is
+     * Memory-only lists keep the entries of {@code previous}. When the table cannot be read (or {@code read} is
      * false because the database is known to be down), the copy from {@code previous} is used, or none, and the
      * refresh timer tries again.
      */
@@ -72,6 +72,8 @@ public final class AccessLists {
         AccessLists lists = new AccessLists(sameMemory ? previous.table : table, persistent, clock, executor, log);
         if (read) {
             try {
+                // Database lists falling back to memory start from their last copy, so the entries keep applying.
+                if (!persistent && previous != null && previous.persistent) for (ListEntry entry : previous.entries) table.put(entry);
                 lists.readOrThrow();
                 return lists;
             } catch (SQLException | RuntimeException | ServiceConfigurationError | LinkageError ex) {
