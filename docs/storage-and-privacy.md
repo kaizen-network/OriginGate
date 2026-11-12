@@ -6,9 +6,9 @@ order: 9
 
 # Storage and privacy
 
-## Table
+## Tables
 
-OriginGate creates its own table, `origingate_ip_cache`, on start:
+OriginGate creates its own table for lookups, `origingate_ip_cache`, on start:
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -21,6 +21,19 @@ OriginGate creates its own table, `origingate_ip_cache`, on start:
 | `checked_at` | `BIGINT` | Unix seconds, indexed |
 
 Saves replace the previous row for the same IP in one step, in both SQLite and MySQL, so several proxies can share one table. Long values are shortened to fit.
+
+List entries (names, IPs, notes, and who added them) are kept until they are removed or expire. `origingate cache clear` does not touch them.
+
+The allow and deny lists use a second table, `origingate_list`, in the same database. It is created together with the first one:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `target` | `VARCHAR(64)` primary key | A lowercase player name, a UUID, an IP address, or a CIDR range. One row per target, so adding it to one list replaces it on the other (only for staff with both list permissions) |
+| `kind` | `VARCHAR(5)` | `allow` or `deny` |
+| `expires_at` | `BIGINT` | Unix seconds, `NULL` when the entry never expires |
+| `note` | `VARCHAR(255)` | `NULL` when there is none |
+| `added_by` | `VARCHAR(64)` | Who added the entry |
+| `added_at` | `BIGINT` | Unix seconds |
 
 ## SQLite
 
@@ -56,11 +69,23 @@ While the database is down, each failed attempt makes OriginGate skip storage fo
 
 IP addresses and their lookup data are personal data.
 
-- Each provider in `country-from` and `vpn-from` receives the player's IP address and your key or token when it is asked. The free ip-api.com service receives them over plain HTTP. MaxMind receives only your account ID and license key when the file is downloaded, never player IPs. Apart from these and [bStats](#bstats), nothing is sent anywhere.
+- Each provider in `country-from` and `vpn-from` receives the player's IP address and your key or token when it is asked. The free ip-api.com service receives them over plain HTTP. MaxMind receives only your account ID and license key when the file is downloaded, never player IPs. Apart from these, the [Discord webhook](#discord-webhook), and [bStats](#bstats), nothing is sent anywhere.
 - Stored lookups older than `keep-days` are deleted every hour (first run one minute after start). Daily log files older than `log-file-keep-days` are deleted at the same time. A value of `0` turns off that deletion.
 - Each IP has one row holding its latest lookup, so a new lookup replaces the old one.
 - `origingate cache clear <ip|all>` deletes lookups from memory and from OriginGate's table right away.
 - The console lines and log files contain IP addresses. Velocity's own proxy log is separate and follows its own settings.
+
+## Discord webhook
+
+The webhook is off until `discord.webhook-url` is set. When it is on, OriginGate sends Discord a message for each kick and bypass (not with `dry-run: true`) and for lookup problems. A message can contain:
+
+- the player's name
+- the rule that matched, and the note (for example `flagged as VPN`)
+- the lookup provider, the organisation, and the country
+- a caution, when a name or permission bypass was used on a server that does not check names
+- the player's IP address, only when `discord.show-ip` is `true`
+
+Anything posted to a Discord channel is kept by Discord and visible to everyone who can read the channel. Anyone with the webhook URL can post to the channel, so keep it secret: OriginGate never logs it. Posts go out over https.
 
 ## bStats
 

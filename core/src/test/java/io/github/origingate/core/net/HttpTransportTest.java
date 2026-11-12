@@ -67,6 +67,28 @@ class HttpTransportTest {
         }
     }
 
+    @Test void postSendsBody() throws Exception {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            seen.add(exchange.getRequestMethod() + " " + exchange.getRequestHeaders().getFirst("Content-Length") + " "
+                    + exchange.getRequestHeaders().getFirst("Content-Type") + " "
+                    + new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+        try (HttpTransport http = HttpTransport.newHttpClient()) {
+            HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/"))
+                    .timeout(Duration.ofSeconds(2)).header("Content-Type", "application/json")
+                    .POST("{\"a\":\"é\"}".getBytes(StandardCharsets.UTF_8)).build();
+            assertEquals(204, http.send(request, HttpResponse.BodyHandlers.discarding()).statusCode());
+            assertEquals(List.of("POST 10 application/json {\"a\":\"é\"}"), seen);
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test void closeDoesNotWaitForABlockedRead() throws Exception {
         try (SlowServer server = new SlowServer(0, 3000)) {
             HttpTransport http = HttpTransport.newHttpClient();

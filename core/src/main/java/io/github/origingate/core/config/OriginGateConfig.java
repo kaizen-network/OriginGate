@@ -19,8 +19,9 @@ public final class OriginGateConfig {
     private final List<String> alertPermissions;
     private final boolean logFile;
     private final int logFileKeepDays;
+    private final Discord discord;
 
-    public OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup lookup, Storage storage, Bypass bypass, Rules rules, List<String> alertPermissions, boolean logFile, int logFileKeepDays) {
+    public OriginGateConfig(boolean dryRun, ConsoleLog consoleLog, Lookup lookup, Storage storage, Bypass bypass, Rules rules, List<String> alertPermissions, boolean logFile, int logFileKeepDays, Discord discord) {
         this.dryRun = dryRun;
         this.consoleLog = consoleLog;
         this.lookup = lookup;
@@ -30,6 +31,7 @@ public final class OriginGateConfig {
         this.alertPermissions = alertPermissions;
         this.logFile = logFile;
         this.logFileKeepDays = logFileKeepDays;
+        this.discord = discord;
     }
 
     public boolean dryRun() { return dryRun; }
@@ -41,6 +43,7 @@ public final class OriginGateConfig {
     public List<String> alertPermissions() { return alertPermissions; }
     public boolean logFile() { return logFile; }
     public int logFileKeepDays() { return logFileKeepDays; }
+    public Discord discord() { return discord; }
 
     @Override public boolean equals(Object other) {
         if (this == other) return true;
@@ -54,9 +57,34 @@ public final class OriginGateConfig {
                 && java.util.Objects.equals(rules, that.rules)
                 && java.util.Objects.equals(alertPermissions, that.alertPermissions)
                 && java.util.Objects.equals(logFile, that.logFile)
-                && java.util.Objects.equals(logFileKeepDays, that.logFileKeepDays);
+                && java.util.Objects.equals(logFileKeepDays, that.logFileKeepDays)
+                && java.util.Objects.equals(discord, that.discord);
     }
-    @Override public int hashCode() { return java.util.Objects.hash(dryRun, consoleLog, lookup, storage, bypass, rules, alertPermissions, logFile, logFileKeepDays); }
+    @Override public int hashCode() { return java.util.Objects.hash(dryRun, consoleLog, lookup, storage, bypass, rules, alertPermissions, logFile, logFileKeepDays, discord); }
+
+    /** The Discord webhook. {@code webhookUrl} is a secret: empty when off, and never part of {@link #toString}. */
+    public static final class Discord {
+        private final String webhookUrl;
+        private final boolean showIp;
+
+        public Discord(String webhookUrl, boolean showIp) {
+            this.webhookUrl = webhookUrl;
+            this.showIp = showIp;
+        }
+
+        public String webhookUrl() { return webhookUrl; }
+        public boolean showIp() { return showIp; }
+        public boolean enabled() { return !webhookUrl.isEmpty(); }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Discord)) return false;
+            Discord that = (Discord) other;
+            return webhookUrl.equals(that.webhookUrl) && showIp == that.showIp;
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(webhookUrl, showIp); }
+        @Override public String toString() { return "Discord[" + "webhookUrl=" + (enabled() ? "<hidden>" : "") + ", " + "showIp=" + showIp + "]"; }
+    }
 
 
     /** How much the console shows per login. Each level includes the ones before it. */
@@ -433,16 +461,20 @@ public final class OriginGateConfig {
 
     public static final class Rules {
         private final AddressRule denyAddresses;
+        private final AccountsRule accountsPerIp;
         private final NetworkRule denyNetworks;
+        private final NetworkRule allowNetworks;
         private final BasicRule vpn;
         private final ProxyRule proxy;
         private final BasicRule hosting;
         private final CountryRule country;
 
-        public Rules(AddressRule denyAddresses, NetworkRule denyNetworks, BasicRule vpn, ProxyRule proxy, BasicRule hosting,
-                     CountryRule country) {
+        public Rules(AddressRule denyAddresses, AccountsRule accountsPerIp, NetworkRule denyNetworks, NetworkRule allowNetworks, BasicRule vpn, ProxyRule proxy,
+                     BasicRule hosting, CountryRule country) {
             this.denyAddresses = denyAddresses;
+            this.accountsPerIp = accountsPerIp;
             this.denyNetworks = denyNetworks;
+            this.allowNetworks = allowNetworks;
             this.vpn = vpn;
             this.proxy = proxy;
             this.hosting = hosting;
@@ -450,7 +482,9 @@ public final class OriginGateConfig {
         }
 
         public AddressRule denyAddresses() { return denyAddresses; }
+        public AccountsRule accountsPerIp() { return accountsPerIp; }
         public NetworkRule denyNetworks() { return denyNetworks; }
+        public NetworkRule allowNetworks() { return allowNetworks; }
         public BasicRule vpn() { return vpn; }
         public ProxyRule proxy() { return proxy; }
         public BasicRule hosting() { return hosting; }
@@ -467,15 +501,40 @@ public final class OriginGateConfig {
             if (!(other instanceof Rules)) return false;
             Rules that = (Rules) other;
             return java.util.Objects.equals(denyAddresses, that.denyAddresses)
+                && java.util.Objects.equals(accountsPerIp, that.accountsPerIp)
                 && java.util.Objects.equals(denyNetworks, that.denyNetworks)
+                && java.util.Objects.equals(allowNetworks, that.allowNetworks)
                 && java.util.Objects.equals(vpn, that.vpn)
                 && java.util.Objects.equals(proxy, that.proxy)
                 && java.util.Objects.equals(hosting, that.hosting)
                 && java.util.Objects.equals(country, that.country);
         }
-        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, denyNetworks, vpn, proxy, hosting, country); }
-        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "denyNetworks=" + denyNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
+        @Override public int hashCode() { return java.util.Objects.hash(denyAddresses, accountsPerIp, denyNetworks, allowNetworks, vpn, proxy, hosting, country); }
+        @Override public String toString() { return "Rules[" + "denyAddresses=" + denyAddresses + ", " + "accountsPerIp=" + accountsPerIp + ", " + "denyNetworks=" + denyNetworks + ", " + "allowNetworks=" + allowNetworks + ", " + "vpn=" + vpn + ", " + "proxy=" + proxy + ", " + "hosting=" + hosting + ", " + "country=" + country + "]"; }
  }
+
+    /** accounts-per-ip: {@code max} is the most players online at once from one address. */
+    public static final class AccountsRule {
+        private final boolean enabled;
+        private final int max;
+
+        public AccountsRule(boolean enabled, int max) {
+            this.enabled = enabled;
+            this.max = max;
+        }
+
+        public boolean enabled() { return enabled; }
+        public int max() { return max; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof AccountsRule)) return false;
+            AccountsRule that = (AccountsRule) other;
+            return enabled == that.enabled && max == that.max;
+        }
+        @Override public int hashCode() { return java.util.Objects.hash(enabled, max); }
+        @Override public String toString() { return "AccountsRule[" + "enabled=" + enabled + ", " + "max=" + max + "]"; }
+    }
 
     public static final class AddressRule {
         private final boolean enabled;

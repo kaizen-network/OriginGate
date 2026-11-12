@@ -41,3 +41,4 @@ ConsentGate holds `PlayerChooseInitialServerEvent`, which fires after `LoginEven
 - On reload, logins already in progress finish on the old runtime, which is then closed in the background.
 - IP parsing is literal-only; no DNS lookups.
 - Every query uses prepared statements.
+- `AccessLists` keeps the allow and deny entries in memory (`ListTable` is the storage side, `SqlIpStorage` the SQL one). `match` never blocks: when the copy is older than 30 seconds it starts one background re-read, and a failed read keeps the old copy and tries again after the next 30 seconds. Adds and removes write, then re-read at once. Memory-only storage uses `ListTable.memory()` and is never re-read.

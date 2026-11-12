@@ -24,6 +24,10 @@ public final class Addresses {
         boolean v4 = IPV4.matcher(value).matches();
         boolean v6 = !v4 && value.indexOf(':') >= 0 && IPV6.matcher(value).matches();
         if (!v4 && !v6) return Optional.empty();
+        // Only a hex digit or ':' can start an IP literal. Anything else would make Java call the system resolver.
+        char first = value.charAt(0);
+        boolean hex = (first >= '0' && first <= '9') || (first >= 'a' && first <= 'f') || (first >= 'A' && first <= 'F');
+        if (!hex && first != ':') return Optional.empty();
         try {
             // A string that is already a literal is only validated, never resolved.
             return Optional.of(InetAddress.getByName(value));

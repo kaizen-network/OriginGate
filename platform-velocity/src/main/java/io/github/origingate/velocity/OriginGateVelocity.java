@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 @Plugin(id = "origingate", name = "OriginGate", version = OriginGateRuntime.VERSION,
         description = "Checks where a connection comes from (VPN, proxy, country) before it joins",
@@ -65,7 +66,16 @@ public final class OriginGateVelocity {
             }
             @Override public void debug(String message) { logger.info(message); }
         }, () -> proxy.getConfiguration().isOnlineMode() ? OfflineModeWarning.Mode.ONLINE : OfflineModeWarning.Mode.OFFLINE,
-                this::staffAlert);
+                this::staffAlert, this::onlineFrom);
+    }
+
+    private int onlineFrom(InetAddress address, UUID except) {
+        int count = 0;
+        for (Player player : proxy.getAllPlayers()) {
+            InetSocketAddress remote = player.getRemoteAddress();
+            if (remote != null && address.equals(remote.getAddress()) && !player.getUniqueId().equals(except)) count++;
+        }
+        return count;
     }
 
     /** Lookup alerts come from worker threads; Velocity's sendMessage is safe from any thread. */
@@ -92,6 +102,7 @@ public final class OriginGateVelocity {
                 return proxy.getAllPlayers().stream().map(Player::getUsername).toList();
             }
             @Override public String reload() { return controller.reload(); }
+            @Override public void kick(Predicate<LoginAttempt> who, Decision decision) { kickMatching(who, decision); }
         });
         proxy.getCommandManager().register(proxy.getCommandManager().metaBuilder("origingate").plugin(this).build(),
                 new OriginGateCommand(commands));
@@ -118,6 +129,24 @@ public final class OriginGateVelocity {
                     logger.error("OriginGate check failed for {}", event.getPlayer().getUsername(), ex);
                     return null;
                 }));
+    }
+
+    /** Velocity's disconnect is safe from any thread. */
+    private void kickMatching(Predicate<LoginAttempt> who, Decision decision) {
+        OriginGateRuntime active = controller.runtime();
+        if (active == null) return;
+        for (Player player : proxy.getAllPlayers()) {
+            Optional<LoginAttempt> attempt = attempt(player);
+            if (attempt.isEmpty() || !who.test(attempt.get())) continue;
+            Component reason;
+            try {
+                reason = render(active.messages().kick(decision.rule()), attempt.get(), decision);
+            } catch (RuntimeException ex) {
+                logger.warn("Could not build the kick message for {}: {}", decision.rule().id(), Text.message(ex));
+                reason = Component.text("You cannot join this server.");
+            }
+            player.disconnect(reason);
+        }
     }
 
     private void apply(OriginGateRuntime active, LoginEvent event, LoginAttempt attempt, Decision decision) {

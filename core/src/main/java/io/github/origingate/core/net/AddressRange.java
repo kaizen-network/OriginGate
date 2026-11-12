@@ -1,6 +1,7 @@
 package io.github.origingate.core.net;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 
 /** A single IP address or a CIDR range such as {@code 203.0.113.0/24}. */
@@ -46,6 +47,16 @@ public final class AddressRange {
             result[i] &= (byte) (0xFF << (8 - keep));
         }
         return result;
+    }
+
+    /** The network address, then {@code /prefix} only when the range is shorter than a whole address. */
+    public String canonical() {
+        try {
+            String host = Addresses.text(InetAddress.getByAddress(network));
+            return prefix < network.length * 8 ? host + "/" + prefix : host;
+        } catch (UnknownHostException ex) {
+            throw new IllegalStateException(ex); // Never: the network is always 4 or 16 bytes.
+        }
     }
 
     @Override public String toString() { return text; }

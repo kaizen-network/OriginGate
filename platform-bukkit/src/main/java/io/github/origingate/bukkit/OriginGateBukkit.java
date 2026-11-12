@@ -15,6 +15,7 @@ import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.*;
@@ -44,7 +45,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
         stopping = false;
         hexColors = ServerVersion.hexColors(getServer().getBukkitVersion());
         controller = new RuntimeController(getDataFolder().toPath(), new JulLog(getLogger()),
-                () -> IdentityMode.of(getServer()), this::staffAlert);
+                () -> IdentityMode.of(getServer()), this::staffAlert, this::onlineFrom);
         controller.reload();
         commands = new Commands(new Commands.Platform() {
             @Override public OriginGateRuntime runtime() { return controller.runtime(); }
@@ -60,6 +61,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
                 return names;
             }
             @Override public String reload() { return controller.reload(); }
+            @Override public void kick(java.util.function.Predicate<LoginAttempt> who, Decision decision) { kickMatching(who, decision); }
         });
         getCommand("origingate").setExecutor(this);
         getCommand("origingate").setTabCompleter(this);
@@ -242,6 +244,31 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
             }
         }
     }
+    /** Called from a worker thread; players are tested and kicked on the main thread. */
+    private void kickMatching(java.util.function.Predicate<LoginAttempt> who, Decision decision) {
+        OriginGateRuntime active = controller.runtime();
+        if (stopping || active == null) return;
+        try {
+            getServer().getScheduler().runTask(this, () -> {
+                for (Player player : players()) {
+                    if (player.getAddress() == null) continue;
+                    LoginAttempt attempt = attempt(active, player, player.getAddress().getAddress());
+                    if (who.test(attempt))
+                        player.kickPlayer(render(active.messages().kick(decision.rule()), attempt, decision, "You cannot join this server."));
+                }
+            });
+        } catch (RuntimeException ex) { getLogger().warning("Could not disconnect players: " + Text.message(ex)); }
+    }
+    /** Players online from exactly this address. The player list is only safe to read on the main thread, so elsewhere it is 0. */
+    private int onlineFrom(InetAddress address, UUID except) {
+        if (!getServer().isPrimaryThread()) return 0;
+        int count = 0;
+        for (Player player : players()) {
+            InetSocketAddress remote = player.getAddress();
+            if (remote != null && address.equals(remote.getAddress()) && !player.getUniqueId().equals(except)) count++;
+        }
+        return count;
+    }
     /** Bukkit changed this method's return type from an array to a collection. */
     private List<Player> players() {
         try {
@@ -259,6 +286,7 @@ public final class OriginGateBukkit extends JavaPlugin implements Listener, Comm
             if (sender.hasPermission(node)) permissions.add(node);
         return new Commands.Sender() {
             @Override public boolean hasPermission(String permission) { return permissions.contains(permission); }
+            @Override public String name() { return sender instanceof Player ? sender.getName() : "console"; }
             @Override public void reply(String line) {
                 if (Boolean.TRUE.equals(DISPATCHING.get())) { sender.sendMessage(line); return; }
                 if (stopping) return;

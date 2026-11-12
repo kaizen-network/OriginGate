@@ -1,6 +1,8 @@
 package io.github.origingate.core.storage;
 
 import io.github.origingate.core.config.OriginGateConfig;
+import io.github.origingate.core.lists.ListEntry;
+import io.github.origingate.core.lists.ListTable;
 import io.github.origingate.core.lookup.IpInfo;
 
 import java.io.IOException;
@@ -13,6 +15,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -23,14 +27,19 @@ import java.util.ServiceConfigurationError;
  * One connection per operation; callers bound concurrency with their worker pool. The table is created
  * on the first connection that works, so a database that is down at startup is set up once it answers.
  */
-public final class SqlIpStorage implements IpStorage {
+public final class SqlIpStorage implements IpStorage, ListTable {
     public static final String TABLE = "origingate_ip_cache";
+    public static final String LIST_TABLE = "origingate_list";
     private static final String COLUMNS =
             "ip,provider,organisation,operator_name,city,region,country,country_code,asn,vpn,proxy,type,checked_at";
     private static final String CREATE_COLUMNS = "ip VARCHAR(45) NOT NULL PRIMARY KEY, provider VARCHAR(255), "
             + "organisation VARCHAR(255), operator_name VARCHAR(255), city VARCHAR(255), region VARCHAR(255), "
             + "country VARCHAR(255), country_code CHAR(2), asn VARCHAR(32), vpn BOOLEAN NOT NULL, "
             + "proxy BOOLEAN NOT NULL, type VARCHAR(64), checked_at BIGINT NOT NULL";
+
+    private static final String LIST_COLUMNS = "target,kind,expires_at,note,added_by,added_at";
+    private static final String LIST_CREATE_COLUMNS = "target VARCHAR(64) NOT NULL PRIMARY KEY, kind VARCHAR(5) NOT NULL, "
+            + "expires_at BIGINT NULL, note VARCHAR(255), added_by VARCHAR(64) NOT NULL, added_at BIGINT NOT NULL";
 
     @FunctionalInterface public interface Connections { Connection open() throws SQLException; }
 
@@ -125,9 +134,12 @@ public final class SqlIpStorage implements IpStorage {
             if (mysql) {
                 statement.execute("CREATE TABLE IF NOT EXISTS " + TABLE + " (" + CREATE_COLUMNS
                         + ", INDEX " + TABLE + "_checked_at (checked_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                statement.execute("CREATE TABLE IF NOT EXISTS " + LIST_TABLE + " (" + LIST_CREATE_COLUMNS
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             } else {
                 statement.execute("CREATE TABLE IF NOT EXISTS " + TABLE + " (" + CREATE_COLUMNS + ")");
                 statement.execute("CREATE INDEX IF NOT EXISTS " + TABLE + "_checked_at ON " + TABLE + " (checked_at)");
+                statement.execute("CREATE TABLE IF NOT EXISTS " + LIST_TABLE + " (" + LIST_CREATE_COLUMNS + ")");
             }
         }
         ready = true;
@@ -208,6 +220,53 @@ public final class SqlIpStorage implements IpStorage {
     @Override public int deleteAll() throws SQLException {
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
             return statement.executeUpdate("DELETE FROM " + TABLE);
+        }
+    }
+
+    @Override public List<ListEntry> all() throws SQLException {
+        List<ListEntry> entries = new ArrayList<>();
+        try (Connection connection = connection(); Statement statement = connection.createStatement();
+             ResultSet row = statement.executeQuery("SELECT " + LIST_COLUMNS + " FROM " + LIST_TABLE + " ORDER BY added_at, target")) {
+            while (row.next()) {
+                ListEntry.Kind kind = ListEntry.Kind.ofId(row.getString("kind"));
+                if (kind == null) continue; // Not written by OriginGate.
+                long expires = row.getLong("expires_at");
+                Instant expiresAt = row.wasNull() ? null : Instant.ofEpochSecond(expires);
+                entries.add(new ListEntry(kind, row.getString("target"), expiresAt, row.getString("note"),
+                        row.getString("added_by"), Instant.ofEpochSecond(row.getLong("added_at"))));
+            }
+        }
+        return entries;
+    }
+
+    @Override public void put(ListEntry entry) throws SQLException {
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
+                "REPLACE INTO " + LIST_TABLE + " (" + LIST_COLUMNS + ") VALUES (?,?,?,?,?,?)")) {
+            statement.setString(1, entry.target());
+            statement.setString(2, entry.kind().id());
+            if (entry.expiresAt() == null) statement.setNull(3, Types.BIGINT);
+            else statement.setLong(3, entry.expiresAt().getEpochSecond());
+            text(statement, 4, entry.note(), 255);
+            text(statement, 5, entry.addedBy(), 64);
+            statement.setLong(6, entry.addedAt().getEpochSecond());
+            statement.executeUpdate();
+        }
+    }
+
+    @Override public int remove(ListEntry.Kind kind, String target) throws SQLException {
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM " + LIST_TABLE + " WHERE target=? AND kind=?")) {
+            statement.setString(1, target);
+            statement.setString(2, kind.id());
+            return statement.executeUpdate();
+        }
+    }
+
+    @Override public int deleteExpired(Instant now) throws SQLException {
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM " + LIST_TABLE + " WHERE expires_at IS NOT NULL AND expires_at<=?")) {
+            statement.setLong(1, now.getEpochSecond());
+            return statement.executeUpdate();
         }
     }
 

@@ -5,6 +5,9 @@ import io.github.origingate.core.TestSupport;
 import io.github.origingate.core.TestSupport.FakeProvider;
 import io.github.origingate.core.TestSupport.FakeStorage;
 import io.github.origingate.core.config.OriginGateConfig;
+import io.github.origingate.core.lists.AccessLists;
+import io.github.origingate.core.lists.ListEntry;
+import io.github.origingate.core.lists.ListTable;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.lookup.LookupException;
 import io.github.origingate.core.lookup.LookupService;
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -53,6 +57,135 @@ class GateTest {
         LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
                 Duration.ofDays(30), workers, clock, Log.NONE);
         return new Gate(config, lookups, Log.NONE);
+    }
+
+    private Gate gateWithLists(AccessLists lists, boolean namesUnverified, Object... changes) throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, changes);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
+                Duration.ofDays(30), workers, clock, Log.NONE);
+        return new Gate(config, lookups, Log.NONE, namesUnverified, lists);
+    }
+
+    private Gate gateWithOnline(OnlineCount online, AccessLists lists, Object... changes) throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, changes);
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        LookupService lookups = new LookupService(TestSupport.chain(provider), new FakeStorage(), new MemoryCache(100, Duration.ofDays(30), clock),
+                Duration.ofDays(30), workers, clock, Log.NONE);
+        return new Gate(config, lookups, Log.NONE, false, lists, online);
+    }
+
+    private static AccessLists lists(ListEntry... entries) {
+        Clock clock = Clock.fixed(TestSupport.NOW, java.time.ZoneOffset.UTC);
+        AccessLists lists = AccessLists.load(ListTable.memory(), false, clock, Runnable::run, Log.NONE);
+        for (ListEntry entry : entries) lists.add(entry).join();
+        return lists;
+    }
+
+    private static ListEntry entry(ListEntry.Kind kind, String target, Instant expiresAt, String note) {
+        return new ListEntry(kind, target, expiresAt, note, "console", TestSupport.NOW);
+    }
+
+    @Test void allowListLetsVpnInWithoutLookup() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "kai", null, "friend")), false);
+        Decision decision = run(gate, player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
+        assertEquals("player is on the allow list: friend", decision.note());
+        assertEquals(0, provider.calls.get());
+        Gate byAddress = gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "203.0.113.0/24", null, null)), false);
+        Decision viaAddress = run(byAddress, player("Alex", VPN_IP));
+        assertEquals(Outcome.ALLOW, viaAddress.outcome());
+        assertEquals("address is on the allow list (203.0.113.0/24)", viaAddress.note());
+        assertEquals(0, provider.calls.get());
+    }
+
+    @Test void allowListNameGetsOfflineCaution() throws Exception {
+        Decision byName = run(gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "kai", null, null)), true), player("Kai", VPN_IP));
+        assertEquals(Gate.UNVERIFIED_NAME, byName.caution());
+        Decision byAddress = run(gateWithLists(lists(entry(ListEntry.Kind.ALLOW, "203.0.113.7", null, null)), true), player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, byAddress.outcome());
+        assertNull(byAddress.caution());
+    }
+
+    @Test void denyListKicksBeforeLookup() throws Exception {
+        AccessLists lists = lists(entry(ListEntry.Kind.DENY, "198.51.100.0/24", null, "bots"));
+        Decision decision = run(gateWithLists(lists, false), player("Kai", PROXY_IP, "origingate.bypass.proxy"));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.DENY_LIST, decision.rule());
+        assertEquals("address is on the deny list (198.51.100.0/24): bots", decision.note());
+        assertEquals(0, provider.calls.get());
+        Decision dry = run(gateWithLists(lists, false, "dry-run", true), player("Kai", PROXY_IP));
+        assertEquals(Outcome.DENY, dry.outcome());
+        assertFalse(dry.kicks());
+    }
+
+    @Test void configBypassBeatsDenyList() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.DENY, "kai", null, null)), false, "bypass.players", List.of("Kai"));
+        assertEquals(Outcome.ALLOW, run(gate, player("Kai", VPN_IP)).outcome());
+    }
+
+    @Test void expiredDenyEntryIsIgnored() throws Exception {
+        Gate gate = gateWithLists(lists(entry(ListEntry.Kind.DENY, "kai", TestSupport.NOW.minusSeconds(1), null)), false);
+        Decision decision = run(gate, player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
+    }
+
+    @Test void accountsPerIpKicksAtTheLimit() throws Exception {
+        OnlineCount two = (address, except) -> 2;
+        Decision full = run(gateWithOnline(two, AccessLists.empty(), "rules.accounts-per-ip.enabled", true,
+                "rules.accounts-per-ip.max", 2), player("Kai", HOME_IP));
+        assertEquals(Outcome.DENY, full.outcome());
+        assertEquals(Rule.ACCOUNTS_PER_IP, full.rule());
+        assertEquals("2 players are already online from this address", full.note());
+        assertEquals(0, provider.calls.get());
+        OnlineCount one = (address, except) -> 1;
+        Decision room = run(gateWithOnline(one, AccessLists.empty(), "rules.accounts-per-ip.enabled", true,
+                "rules.accounts-per-ip.max", 2), player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, room.outcome());
+        assertEquals(1, provider.calls.get());
+    }
+
+    @Test void accountsPerIpPassesJoiningUuid() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<java.util.UUID> seen = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<java.net.InetAddress> from = new java.util.concurrent.atomic.AtomicReference<>();
+        OnlineCount count = (address, except) -> {
+            from.set(address);
+            seen.set(except);
+            return 0;
+        };
+        LoginAttempt attempt = player("Kai", HOME_IP);
+        run(gateWithOnline(count, AccessLists.empty(), "rules.accounts-per-ip.enabled", true), attempt);
+        assertEquals(attempt.uuid(), seen.get());
+        assertEquals(attempt.address(), from.get());
+    }
+
+    @Test void accountsPerIpIsOffByDefault() throws Exception {
+        assertEquals(Outcome.ALLOW, run(gateWithOnline((address, except) -> 50, AccessLists.empty()), player("Kai", HOME_IP)).outcome());
+    }
+
+    @Test void accountsPerIpSkipsPrivateAddresses() throws Exception {
+        Decision decision = run(gateWithOnline((address, except) -> 50, AccessLists.empty(),
+                "rules.accounts-per-ip.enabled", true, "lookup.skip-private-addresses", true), player("Kai", "127.0.0.1"));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals("private address, lookup skipped", decision.note());
+    }
+
+    @Test void allowListBeatsAccountsPerIp() throws Exception {
+        AccessLists lists = lists(entry(ListEntry.Kind.ALLOW, HOME_IP, null, null));
+        Decision decision = run(gateWithOnline((address, except) -> 50, lists, "rules.accounts-per-ip.enabled", true),
+                player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(0, provider.calls.get());
+    }
+
+    @Test void dryRunDoesNotKickAccountsPerIp() throws Exception {
+        Decision decision = run(gateWithOnline((address, except) -> 5, AccessLists.empty(),
+                "rules.accounts-per-ip.enabled", true, "dry-run", true), player("Kai", HOME_IP));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.ACCOUNTS_PER_IP, decision.rule());
+        assertFalse(decision.kicks());
     }
 
     private static Decision run(Gate gate, LoginAttempt attempt) throws Exception {
@@ -274,6 +407,67 @@ class GateTest {
         Decision decision = run(gate, player("Alex", VPN_IP, "origingate.bypass.vpn"));
         assertEquals(Rule.DENY_NETWORKS, decision.rule());
         assertEquals(Outcome.DENY, decision.outcome(), "a VPN bypass does not cover a denied network");
+    }
+
+    private static final String SCHOOL_IP = "198.51.100.77";
+
+    private void withSchool() {
+        provider.answer(new IpInfo(SCHOOL_IP, "Example Net", "Example School District", null, "Example City", "Example Region",
+                "Canada", "CA", "AS64999", false, true, "Residential", TestSupport.NOW));
+    }
+
+    @Test void allowNetworksLetsInFlaggedNetwork() throws Exception {
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Kai", VPN_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(Rule.ALLOW_NETWORKS, decision.rule());
+        assertEquals("network is on the allow list (AS64500)", decision.note());
+    }
+
+    @Test void allowNetworksIgnoresNames() throws Exception {
+        withSchool();
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Kai", SCHOOL_IP));
+        assertEquals(Outcome.DENY, decision.outcome());
+        assertEquals(Rule.PROXY, decision.rule());
+    }
+
+    @Test void allowNetworksExemptsHostingToo() throws Exception {
+        withHosting();
+        Gate gate = gate("rules.hosting.enabled", true, "rules.allow-networks.enabled", true,
+                "rules.allow-networks.asns", List.of("AS64496"));
+        Decision decision = run(gate, player("Kai", HOSTING_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertEquals(Rule.ALLOW_NETWORKS, decision.rule());
+    }
+
+    @Test void allowNetworksKeepsCountryAndDenyNetworks() throws Exception {
+        Gate country = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"),
+                "rules.country.enabled", true, "rules.country.countries", List.of("CA"));
+        Decision byCountry = run(country, player("Kai", VPN_IP));
+        assertEquals(Outcome.DENY, byCountry.outcome());
+        assertEquals(Rule.COUNTRY, byCountry.rule());
+
+        Gate denied = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"),
+                "rules.deny-networks.enabled", true, "rules.deny-networks.asns", List.of("AS64500"));
+        Decision byNetwork = run(denied, player("Kai", VPN_IP));
+        assertEquals(Outcome.DENY, byNetwork.outcome());
+        assertEquals(Rule.DENY_NETWORKS, byNetwork.rule());
+    }
+
+    @Test void cleanAnswerFromAllowedNetworkHasNoRule() throws Exception {
+        Gate gate = gate("rules.allow-networks.enabled", true, "rules.allow-networks.asns", List.of("AS64500"));
+        Decision decision = run(gate, player("Kai", HOME_IP));
+        assertEquals(Outcome.ALLOW, decision.outcome());
+        assertNull(decision.rule());
+    }
+
+    @Test void matchSkipsExemptedRules() throws Exception {
+        OriginGateConfig config = TestSupport.config(directory, "rules.allow-networks.enabled", true,
+                "rules.allow-networks.asns", List.of("AS64500"));
+        assertFalse(Gate.match(config.rules(), info(VPN_IP, "Netherlands", "NL", true, true)).isPresent());
+        OriginGateConfig plain = TestSupport.config(directory);
+        assertTrue(Gate.match(plain.rules(), info(VPN_IP, "Netherlands", "NL", true, true)).isPresent());
     }
 
     @Test void disabledRulesAreSkipped() throws Exception {

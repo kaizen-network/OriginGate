@@ -1,6 +1,7 @@
 package io.github.origingate.core;
 
 import com.sun.net.httpserver.HttpServer;
+import io.github.origingate.core.lists.ListEntry;
 import io.github.origingate.core.lookup.IpInfo;
 import io.github.origingate.core.rules.LoginAttempt;
 import io.github.origingate.core.storage.SqlIpStorage;
@@ -31,7 +32,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Loads a real runtime (SQLite, HTTP provider) against a local stub server and drives the commands. */
@@ -227,9 +230,67 @@ class RuntimeCommandsTest {
         Path logs = Files.createDirectories(directory.resolve("logs"));
         Files.writeString(logs.resolve(LocalDate.now().minusDays(400) + ".log"), "old\n");
 
-        assertEquals(new OriginGateRuntime.Cleanup(0, 0), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 0), runtime.deleteExpired());
         load();
-        assertEquals(new OriginGateRuntime.Cleanup(1, 1), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(1, 1, 0), runtime.deleteExpired());
+    }
+
+    @Test void statusShowsListCounts() throws Exception {
+        load();
+        runtime.lists().add(entry(ListEntry.Kind.ALLOW, "kai", null)).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "198.51.100.0/24", null)).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "alex", null)).join();
+        Replies sender = new Replies(Commands.STATUS);
+        commands().execute(new String[] {"status"}, sender);
+        sender.waitFor("Lists: 1 allow and 2 deny entries");
+    }
+
+    @Test void cleanupDeletesExpiredEntries() throws Exception {
+        load("storage.keep-days", 0, "log-file-keep-days", 0);
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "kai", Instant.now().minusSeconds(60))).join();
+        runtime.lists().add(entry(ListEntry.Kind.DENY, "alex", Instant.now().plus(Duration.ofDays(1)))).join();
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 1), runtime.deleteExpired());
+        assertEquals(new OriginGateRuntime.Cleanup(0, 0, 0), runtime.deleteExpired());
+    }
+
+    private static ListEntry entry(ListEntry.Kind kind, String target, Instant expiresAt) {
+        return new ListEntry(kind, target, expiresAt, null, "console", Instant.now());
+    }
+
+    @Test void statusShowsDiscordWebhook() throws Exception {
+        load();
+        assertNull(runtime.webhook());
+        assertTrue(runtime.status().contains("Discord webhook: off"), runtime.status().toString());
+        load("discord.webhook-url", "https://discord.example/api/webhooks/1/secret-token");
+        assertNotNull(runtime.webhook());
+        assertTrue(runtime.status().contains("Discord webhook: on"), runtime.status().toString());
+        assertFalse(String.join(" ", runtime.status()).contains("secret-token"));
+    }
+
+    @Test void reportPostsKickEvenWithConsoleLogNone() throws Exception {
+        List<String> bodies = new java.util.concurrent.CopyOnWriteArrayList<>();
+        server.createContext("/hook", exchange -> {
+            bodies.add(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        TestSupport.writeConfig(directory, "console-log", "none", "log-file", false);
+        RuntimeController controller = new RuntimeController(directory, Log.NONE);
+        controller.reload();
+        OriginGateRuntime active = controller.runtime();
+        io.github.origingate.core.net.HttpTransport http = io.github.origingate.core.net.HttpTransport.newHttpClient();
+        try {
+            active.attachWebhook(new io.github.origingate.core.report.DiscordWebhook(
+                    java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/hook"), false, http, Log.NONE, "OriginGate/test"));
+            controller.report(active, TestSupport.player("Kai", "203.0.113.7"),
+                    new io.github.origingate.core.rules.Decision(io.github.origingate.core.rules.Decision.Outcome.DENY,
+                            io.github.origingate.core.rules.Rule.VPN, "flagged as VPN", null, false));
+            controller.stop(5000);
+        } finally {
+            http.close();
+        }
+        assertEquals(1, bodies.size(), bodies.toString());
+        assertTrue(bodies.get(0).contains("Kicked **Kai** by the vpn rule: flagged as VPN"), bodies.get(0));
     }
 
     @Test void commandsExplainWhenNotRunning() throws Exception {

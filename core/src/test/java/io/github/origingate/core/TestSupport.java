@@ -135,8 +135,9 @@ public final class TestSupport {
     /** Keeps warnings so tests can check them. */
     public static final class RecordingLog implements Log {
         public final List<String> warnings = new CopyOnWriteArrayList<>();
+        public final List<String> infos = new CopyOnWriteArrayList<>();
 
-        @Override public void info(String message) { }
+        @Override public void info(String message) { infos.add(message); }
 
         @Override public void warn(String message, Throwable cause) { warnings.add(message); }
 

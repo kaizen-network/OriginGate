@@ -15,6 +15,20 @@ kick:
 
     <yellow>Username: <username></yellow>
     <gray>Time: <time></gray>
+  deny-list: |-
+    <red>You are not allowed on this server.</red>
+
+    <white>Contact the server staff if you think this is a mistake.</white>
+
+    <yellow>Username: <username></yellow>
+    <gray>Time: <time></gray>
+  accounts-per-ip: |-
+    <red>Too many players are already connected from your address.</red>
+
+    <white>Contact the server staff if you think this is a mistake.</white>
+
+    <yellow>Username: <username></yellow>
+    <gray>Time: <time></gray>
   vpn: |-
     <red>VPN connections are not allowed.</red>
 

@@ -6,7 +6,7 @@
 
 - Config loading, bounds, unknown keys, paths, country codes, and redaction of passwords and keys
 - The unchanged 1.0.0 `config.yml` and `messages.yml` (in `core/src/test/resources/upgrade/`) loading and reading the same as the current defaults apart from the new settings
-- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip, deny-networks by ASN and organisation text before the vpn rule, and the hosting rule
+- Rule order and first match, every bypass path (global permission, player name, UUID, address, per-rule permission, several permissions), deny-addresses before lookup, private-address skip, deny-networks by ASN and organisation text before the vpn rule, the hosting rule, and allow-networks skipping only vpn, proxy, and hosting
 - Country matching by code, including `XK`
 - Lookup order (memory, storage, provider), one request per IP, expiry, the answer arriving before the save, the 60-second storage pause, the 5-minute pause after a result without country, a refresh never joining a normal lookup, full queue
 - Lookup failure and timeout in both `on-lookup-failure` modes, dry-run, console log levels
@@ -130,6 +130,12 @@ Checks:
 20. 3 failed lookups in a row send one alert, and the next answer one recovery alert.
 21. A provider refused with HTTP 429 sends one alert, is not asked while paused, and sends one recovery alert after the 60-second pause.
 22. 12 logins at once from 12 loopback addresses: 8 lookups run and 4, picked up while the queue was backed up, are dropped.
+23. `origingate allow add` lets a stubbed VPN player in with no lookup, and `allow remove` makes it kicked again.
+24. `origingate deny add <address>` kicks a stubbed clean address at login with no lookup request.
+25. `origingate deny add` of an online player disconnects them.
+26. `accounts-per-ip` with `max: 1` kicks a second player from the same address and lets one from another address in.
+
+The Discord webhook is checked by the unit tests only, because the webhook setting needs an https URL and the probe's stub server is plain HTTP.
 
 `--no-sqlite` instead starts the proxy with an `os.arch` no SQLite native library exists for, and checks that logins are still checked with memory-only storage, also after a reload.
 
