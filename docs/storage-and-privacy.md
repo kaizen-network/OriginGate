@@ -77,7 +77,7 @@ IP addresses and their lookup data are personal data.
 
 ## Discord webhook
 
-The webhook is off until `discord.webhook-url` is set. When it is on, OriginGate sends Discord a message for each kick and bypass (not dry-run kicks) and for lookup problems. A message can contain:
+The webhook is off until `discord.webhook-url` is set. When it is on, OriginGate sends Discord a message for each kick and bypass (not with `dry-run: true`) and for lookup problems. A message can contain:
 
 - the player's name
 - the rule that matched, and the note (for example `flagged as VPN`)
