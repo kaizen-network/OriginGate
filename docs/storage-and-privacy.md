@@ -28,7 +28,7 @@ The allow and deny lists use a second table, `origingate_list`, in the same data
 
 | Column | Type | Notes |
 | --- | --- | --- |
-| `target` | `VARCHAR(64)` primary key | A lowercase player name, a UUID, an IP address, or a CIDR range. One row per target, so adding it to one list replaces it on the other |
+| `target` | `VARCHAR(64)` primary key | A lowercase player name, a UUID, an IP address, or a CIDR range. One row per target, so adding it to one list replaces it on the other (only for staff with both list permissions) |
 | `kind` | `VARCHAR(5)` | `allow` or `deny` |
 | `expires_at` | `BIGINT` | Unix seconds, `NULL` when the entry never expires |
 | `note` | `VARCHAR(255)` | `NULL` when there is none |

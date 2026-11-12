@@ -170,6 +170,29 @@ class ListCommandsTest {
         assertEquals(0, runtime.lists().count(ListEntry.Kind.ALLOW));
     }
 
+    @Test void replacingAnEntryOnTheOtherListNeedsThatListsPermission() throws Exception {
+        load();
+        Replies admin = run(both(), "deny", "add", "Kai");
+        admin.waitFor("Added");
+        kicks.clear();
+        Replies helper = run(new Replies(Commands.ALLOW), "allow", "add", "Kai");
+        assertEquals("kai is on the deny list. Changing that list needs origingate.command.deny.", helper.next());
+        assertEquals(1, runtime.lists().count(ListEntry.Kind.DENY));
+        assertEquals(0, runtime.lists().count(ListEntry.Kind.ALLOW));
+
+        run(admin, "allow", "add", "Kai");
+        admin.waitFor("Added kai to the allow list");
+        assertEquals(0, runtime.lists().count(ListEntry.Kind.DENY));
+        Replies moderator = run(new Replies(Commands.DENY), "deny", "add", "kai");
+        assertEquals("kai is on the allow list. Changing that list needs origingate.command.allow.", moderator.next());
+        assertEquals(1, runtime.lists().count(ListEntry.Kind.ALLOW));
+        assertTrue(kicks.isEmpty());
+
+        runtime.lists().add(new ListEntry(ListEntry.Kind.DENY, "sam", Instant.now().minusSeconds(60), null, "console", Instant.now().minusSeconds(120))).join();
+        run(helper, "allow", "add", "Sam");
+        helper.waitFor("Added sam to the allow list");
+    }
+
     @Test void rejectsBadInput() throws Exception {
         load();
         Replies sender = both();

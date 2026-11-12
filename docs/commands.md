@@ -30,7 +30,7 @@ A duration is a number and a unit: `s` (seconds), `m` (minutes), `h` (hours), `d
 
 Examples: `origingate allow add Kai 7d trusted tester`, `origingate deny add 203.0.113.0/24 never spam network`.
 
-`origingate.command.allow` and `origingate.command.deny` are separate, so you can let someone manage one list and not the other. Both are for operators by default on Bukkit.
+`origingate.command.allow` and `origingate.command.deny` are separate, so you can let someone manage one list and not the other. A target is on one list at a time: adding it to one list replaces its entry on the other only for someone with both permissions, and otherwise the reply names the permission needed. Both are for operators by default on Bukkit.
 
 `deny add` disconnects matching players who are online on that server right away, with the `deny-list` kick message. With `dry-run: true` nobody is disconnected. Players on other servers that share the same MySQL database are turned away at their next login, within about 30 seconds.
 

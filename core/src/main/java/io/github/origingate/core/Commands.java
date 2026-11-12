@@ -196,9 +196,15 @@ public final class Commands {
             return;
         }
         ListEntry entry = new ListEntry(kind, target, expires, note.isEmpty() ? null : note, sender.name(), now);
-        runtime.lists().add(entry).whenComplete((done, error) -> {
+        // Replacing the target's entry on the other list needs that list's permission too.
+        ListEntry.Kind other = kind == ListEntry.Kind.ALLOW ? ListEntry.Kind.DENY : ListEntry.Kind.ALLOW;
+        runtime.lists().add(entry, sender.hasPermission(permission(other))).whenComplete((added, error) -> {
             if (error != null) {
                 sender.reply("Could not change the " + kind.id() + " list: " + Text.message(error));
+                return;
+            }
+            if (!added) {
+                sender.reply(target + " is on the " + other.id() + " list. Changing that list needs " + permission(other) + ".");
                 return;
             }
             boolean dryRun = runtime.config().dryRun();

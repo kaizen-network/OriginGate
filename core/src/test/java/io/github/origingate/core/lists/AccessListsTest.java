@@ -188,7 +188,7 @@ class AccessListsTest {
         BrokenTable table = new BrokenTable();
         table.putError = new LinkageError("driver (test)");
         AccessLists lists = AccessLists.load(table, true, new TestSupport.MutableClock(TestSupport.NOW), Runnable::run, new TestSupport.RecordingLog());
-        java.util.concurrent.CompletableFuture<Void> added = lists.add(entry(ListEntry.Kind.DENY, "kai"));
+        java.util.concurrent.CompletableFuture<Boolean> added =lists.add(entry(ListEntry.Kind.DENY, "kai"));
         assertTrue(added.isCompletedExceptionally());
     }
 

@@ -125,11 +125,26 @@ public final class AccessLists {
         return Optional.ofNullable(best);
     }
 
-    public CompletableFuture<Void> add(ListEntry entry) {
+    /** Saves the entry, replacing any entry for the same target on either list. Completes with true. */
+    public CompletableFuture<Boolean> add(ListEntry entry) {
+        return add(entry, true);
+    }
+
+    /**
+     * Like {@link #add(ListEntry)}, but when {@code replaceOther} is false and the target has an unexpired entry on the
+     * other list (read fresh from the table), nothing is saved and it completes with false.
+     */
+    public CompletableFuture<Boolean> add(ListEntry entry, boolean replaceOther) {
         return submit(() -> {
+            if (!replaceOther) {
+                Instant now = clock.instant();
+                for (ListEntry other : readOrThrow()) {
+                    if (other.kind() != entry.kind() && other.target().equals(entry.target()) && other.activeAt(now)) return false;
+                }
+            }
             table.put(entry);
             readNow();
-            return null;
+            return true;
         });
     }
 
