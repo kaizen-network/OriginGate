@@ -30,6 +30,9 @@ public final class ListEntry {
 
     private static final Pattern UUID_TEXT = Pattern.compile("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}");
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_.*-]{1,32}");
+    private static final Pattern UUID_NO_DASHES = Pattern.compile("[0-9A-Fa-f]{32}");
+    /** Digits and dots that did not parse as an address, such as 203.0.113.256: a typo, never a name. */
+    private static final Pattern BAD_IPV4 = Pattern.compile("[0-9]+(\\.[0-9]+)+");
 
     private final Kind kind;
     private final String target;
@@ -84,28 +87,22 @@ public final class ListEntry {
     }
 
     /**
-     * The stored form of a target: an address (with {@code /prefix} only when shorter than the whole address),
-     * else a UUID, else a player name, in lower case.
+     * The stored form of a target: an address or a range's network address (with {@code /prefix} only when shorter
+     * than the whole address), else a UUID (dashes added when left out), else a player name, in lower case.
      * @throws IllegalArgumentException when the input is none of these
      */
     public static String normalize(String input) {
         String value = input == null ? "" : input.trim();
         int slash = value.indexOf('/');
-        String host = slash < 0 ? value : value.substring(0, slash);
-        InetAddress address = Addresses.parse(host).orElse(null);
-        if (address != null) {
+        if (Addresses.parse(slash < 0 ? value : value.substring(0, slash)).isPresent()) {
             try {
-                AddressRange.parse(value);
+                return AddressRange.parse(value).canonical();
             } catch (IllegalArgumentException ex) {
                 throw invalid(input);
             }
-            String text = Addresses.text(address);
-            if (slash >= 0) {
-                int prefix = Integer.parseInt(value.substring(slash + 1));
-                if (prefix < address.getAddress().length * 8) text += "/" + prefix;
-            }
-            return text;
         }
+        if (BAD_IPV4.matcher(value).matches()) throw invalid(input);
+        if (UUID_NO_DASHES.matcher(value).matches()) value = value.replaceFirst("(.{8})(.{4})(.{4})(.{4})(.{12})", "$1-$2-$3-$4-$5");
         if (UUID_TEXT.matcher(value).matches() || NAME.matcher(value).matches()) return value.toLowerCase(Locale.ROOT);
         throw invalid(input);
     }

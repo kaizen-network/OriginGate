@@ -32,6 +32,12 @@ class ListEntryTest {
         assertEquals("198.51.100.0/24", ListEntry.normalize("198.51.100.0/24"));
         assertEquals("203.0.113.7", ListEntry.normalize("203.0.113.7/32"));
         assertEquals("123e4567-e89b-12d3-a456-426614174000", ListEntry.normalize("123E4567-E89B-12D3-A456-426614174000"));
+        assertEquals("123e4567-e89b-12d3-a456-426614174000", ListEntry.normalize("123E4567E89B12D3A456426614174000"));
+        assertEquals("198.51.100.0/24", ListEntry.normalize("198.51.100.77/24"));
+        assertEquals("2001:db8:0:0:0:0:0:0/32", ListEntry.normalize("2001:db8::1/32"));
+        assertEquals(".steve", ListEntry.normalize(".Steve"));
+        assertThrows(IllegalArgumentException.class, () -> ListEntry.normalize("203.0.113.256"));
+        assertThrows(IllegalArgumentException.class, () -> ListEntry.normalize("010.0.0.1"));
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> ListEntry.normalize("two words"));
         assertEquals("two words is not a player name, UUID, IP address, or CIDR range", refused.getMessage());
         assertThrows(IllegalArgumentException.class, () -> ListEntry.normalize("a".repeat(33)));
