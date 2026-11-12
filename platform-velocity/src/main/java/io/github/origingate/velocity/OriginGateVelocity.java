@@ -72,7 +72,8 @@ public final class OriginGateVelocity {
     private int onlineFrom(InetAddress address, UUID except) {
         int count = 0;
         for (Player player : proxy.getAllPlayers()) {
-            if (address.equals(player.getRemoteAddress().getAddress()) && !player.getUniqueId().equals(except)) count++;
+            InetSocketAddress remote = player.getRemoteAddress();
+            if (remote != null && address.equals(remote.getAddress()) && !player.getUniqueId().equals(except)) count++;
         }
         return count;
     }
